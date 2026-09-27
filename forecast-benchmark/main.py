@@ -20,6 +20,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 import requests
+import os
 
 import pmdarima as pm          # independent auto-ARIMA (its own library)
 
@@ -120,10 +121,66 @@ def prophet_forecast(train_dates: List[str], train_vals: np.ndarray, h: int, fty
         return np.full(h, np.nan)
 
 
-MODELS = ["ARIMA", "Prophet"]
+# The benchmark calls the RUNNING ssa-service rather than reimplementing SSA
+# here. A second copy of the algorithm would drift from the one the product
+# actually uses, and then the comparison would measure the copy, not the system.
+SSA_URL = os.getenv("SSA_SERVICE_URL", "http://127.0.0.1:8001").rstrip("/")
 
-def all_forecasts(train_dates, train, h, season, ftype) -> dict:
+def ssa_forecast(train_dates, train_vals: np.ndarray, h: int, ftype: str,
+                 data_type: str = "sales", target_dates=None) -> np.ndarray:
+    """Forecast h periods from ssa-service, anchored at the END OF THE TRAINING
+    SLICE rather than at today.
+
+    ssa-service sets fc_start = max(next period after the data, this period), so
+    a live dashboard never forecasts weeks that have already happened. That is
+    right in production and fatal in a backtest: asked to forecast from a train
+    slice ending 2026-08-17 it answered for 2026-09-21 onward, five weeks past
+    the periods being scored. The first attempt at this comparison was therefore
+    measuring SSA's September numbers against August actuals.
+
+    There is no flag to turn that off, so the training dates are moved forward by
+    a WHOLE NUMBER OF SEASONAL CYCLES - 52 weeks or 12 months - until the slice
+    ends at or after today. A whole cycle leaves every point on the same week of
+    the year, so seasonality keeps its phase, while fc_start falls back to the
+    natural next period and the h values line up 1:1 with the h test periods.
+    """
+    try:
+        idx = pd.to_datetime(list(train_dates))
+        if len(idx) == 0:
+            return np.full(h, np.nan)
+        freq, cycle = {"weekly": ("W-MON", pd.Timedelta(weeks=52)),
+                       "monthly": ("MS", pd.DateOffset(months=12)),
+                       "annually": ("YS", pd.DateOffset(years=1))}.get(ftype, ("W-MON", pd.Timedelta(weeks=52)))
+        now = pd.Timestamp.now().normalize()
+        shifted = idx
+        for _ in range(40):                      # bounded; each step is one cycle
+            if shifted[-1] >= now:
+                break
+            shifted = shifted + cycle
+        rows = [{"date": d.strftime("%Y-%m-%d"), "value": float(v)}
+                for d, v in zip(shifted, np.asarray(train_vals, float))]
+        r = requests.post(f"{SSA_URL}/api/forecast", timeout=90, json={
+            "rows": rows,
+            "forecast_periods": int(h),
+            "forecast_type": ftype,
+            "data_type": data_type,
+        })
+        if r.status_code != 200:
+            return np.full(h, np.nan)
+        vals = (r.json().get("forecast") or {}).get("values") or []
+        out = np.asarray(vals, float)[:h]
+        if out.size < h:
+            out = np.concatenate([out, np.full(h - out.size, np.nan)])
+        return np.clip(out, 0.0, None)
+    except Exception:
+        return np.full(h, np.nan)
+
+
+MODELS = ["SSA", "ARIMA", "Prophet"]
+
+def all_forecasts(train_dates, train, h, season, ftype, data_type="sales", target_dates=None) -> dict:
     return {
+        "SSA": ssa_forecast(train_dates, train, h, ftype, data_type, target_dates),
         "ARIMA": arima_forecast(train, h, season),
         "Prophet": prophet_forecast(train_dates, train, h, ftype),
     }
@@ -133,7 +190,11 @@ def future_dates(last: str, h: int, ftype: str) -> List[str]:
     idx = pd.date_range(pd.to_datetime(last), periods=h + 1, freq=FREQ[ftype])[1:]
     return [d.strftime("%Y-%m-%d") for d in idx]
 
-def run_benchmark(rows, forecast_type, forecast_periods):
+def _data_type_for(series: str) -> str:
+    """Match what the dashboard sends: inventory is sparse demand, not a level."""
+    return "demand" if series == "inventory" else "sales"
+
+def run_benchmark(rows, forecast_type, forecast_periods, data_type="sales"):
     ftype = forecast_type if forecast_type in FREQ else "weekly"
     dates, y = aggregate(rows, ftype)
     n = len(y)
@@ -169,7 +230,8 @@ def run_benchmark(rows, forecast_type, forecast_periods):
         test = y[train_end: train_end + h]
         if len(test) == 0:
             continue
-        fc = all_forecasts(dates[:train_end], train, len(test), season, ftype)
+        fc = all_forecasts(dates[:train_end], train, len(test), season, ftype, data_type,
+                           dates[train_end: train_end + len(test)])
         for mdl in MODELS:
             p = fc.get(mdl, np.full(len(test), np.nan))[: len(test)]
             if np.all(np.isfinite(p)):
@@ -186,7 +248,7 @@ def run_benchmark(rows, forecast_type, forecast_periods):
 
     # future forecast on the full series for the overlay chart
     fut_dates = future_dates(dates[-1], h, ftype)
-    full_fc = all_forecasts(dates, y, h, season, ftype)
+    full_fc = all_forecasts(dates, y, h, season, ftype, data_type, fut_dates)
     for row in model_rows:
         arr = full_fc.get(row["model"])
         row["forecast"] = [None if (arr is None or not np.isfinite(arr[i])) else round(float(arr[i]), 2)
@@ -213,7 +275,8 @@ def run_benchmark(rows, forecast_type, forecast_periods):
 @app.post("/api/benchmark")
 async def benchmark(req: BenchmarkRequest):
     """Row-based entry point (data POSTed directly)."""
-    return run_benchmark(req.rows, req.forecast_type, req.forecast_periods)
+    return run_benchmark(req.rows, req.forecast_type, req.forecast_periods,
+                         "demand" if req.data_type == "stock" else "sales")
 
 
 # ── server-side data fetch from the Laravel API (no browser, no CORS) ──────────
@@ -299,8 +362,110 @@ async def benchmark_live(req: LiveRequest):
             pass
 
     rows = build_rows(sales, req.series, req.inventory_id, item_name)
-    result = run_benchmark(rows, req.forecast_type, req.forecast_periods)
+    result = run_benchmark(rows, req.forecast_type, req.forecast_periods,
+                           _data_type_for(req.series))
     result["raw_points"] = len(rows)
+    return result
+
+
+# ── Direct MongoDB read (token-free) ───────────────────────────────────────────
+# Reads the same data the API would, straight from Mongo, read-only. No token, no
+# backend needed. Connection comes from backend/.env (MONGODB_DSN + DB_DATABASE);
+# the DSN is never hardcoded here. Applies the SAME filter the API does: completed.
+from pathlib import Path as _Path
+from dotenv import dotenv_values as _dotenv_values
+from pymongo import MongoClient as _MongoClient
+
+def _mongo_db():
+    env = _dotenv_values(_Path(__file__).resolve().parent.parent / "backend" / ".env")
+    dsn, dbn = env.get("MONGODB_DSN"), env.get("DB_DATABASE")
+    if not dsn or not dbn:
+        raise HTTPException(500, "MongoDB config (MONGODB_DSN / DB_DATABASE) not found in backend/.env")
+    return _MongoClient(dsn, serverSelectionTimeoutMS=5000)[dbn]
+
+class DbRequest(BaseModel):
+    series: str = "sales_revenue"          # sales_revenue | sales_qty | inventory
+    inventory_id: Optional[str] = None
+    forecast_type: str = "weekly"
+    forecast_periods: int = 4
+
+# NOTE: the collection is "inventories", not "inventory". laravel-mongodb 5
+# ignores a model's $collection property and uses the pluralised table name, so
+# "inventory" and "stock_history" are empty leftovers from before that change -
+# reading them returns nothing at all. Real counts: inventories 50, inventory 0.
+@app.get("/api/inventory-list-db")
+async def inventory_list_db():
+    try:
+        inv = list(_mongo_db()["inventories"].find({}, {"name": 1, "hasVariants": 1, "isOnDemand": 1}))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Could not read inventory from MongoDB: {e}")
+    items = [{"id": str(i.get("_id")), "name": i.get("name")}
+             for i in inv if not i.get("hasVariants") and not i.get("isOnDemand")]
+    return {"items": items}
+
+def ledger_demand_rows(db, inventory_id: str) -> List[Row]:
+    """Material demand from the stock ledger, not from sales.
+
+    Sales never carry a material id - a mug sale consumes "Ceramic White Mug
+    11oz" through the bill of materials - so matching sales on inventoryId
+    returned nothing for every material. Demand lives in stock_histories.
+
+    The consumption rule mirrors MaterialDemand::countsAsConsumption in the
+    backend: 'production' always counts, 'sale_reserved' counts unless its order
+    was cancelled or returned. Reservations, releases, restocks and scrap are
+    not demand. The status match is case-insensitive here because the data holds
+    both 'cancelled' and 'Cancelled'.
+    """
+    status = {str(o["_id"]): (o.get("orderStatus") or "").strip().lower()
+              for o in db["orders"].find({}, {"orderStatus": 1})}
+    agg = defaultdict(float)
+    for h in db["stock_histories"].find(
+            {"inventoryId": inventory_id},
+            {"reason": 1, "quantity": 1, "orderId": 1, "saleDate": 1, "createdAt": 1, "_id": 0}):
+        reason = h.get("reason")
+        if reason == "sale_reserved":
+            if status.get(str(h.get("orderId") or ""), "") in ("cancelled", "returned"):
+                continue
+        elif reason != "production":
+            continue
+        ds = _agg_date(h.get("saleDate") or h.get("createdAt"))
+        if ds:
+            agg[ds] += abs(float(h.get("quantity") or 0))
+    return [Row(date=d, value=agg[d]) for d in sorted(agg)]
+
+
+@app.post("/api/benchmark-db")
+async def benchmark_db(req: DbRequest):
+    try:
+        db = _mongo_db()
+        sales = list(db["sales"].find(
+            {"status": "completed"},
+            {"saleDate": 1, "totalPrice": 1, "quantity": 1, "inventoryId": 1, "productName": 1, "_id": 0},
+        ))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Could not read sales from MongoDB: {e}")
+
+    item_name = None
+    if req.series == "inventory" and req.inventory_id:
+        try:
+            from bson import ObjectId
+            match = db["inventories"].find_one({"_id": ObjectId(req.inventory_id)}, {"name": 1})
+            item_name = match.get("name") if match else None
+        except Exception:
+            item_name = None
+
+    if req.series == "inventory" and req.inventory_id:
+        rows = ledger_demand_rows(db, req.inventory_id)
+    else:
+        rows = build_rows(sales, req.series, req.inventory_id, item_name)
+    result = run_benchmark(rows, req.forecast_type, req.forecast_periods,
+                           _data_type_for(req.series))
+    result["raw_points"] = len(rows)
+    result["data_source"] = "mongodb (read-only)"
     return result
 
 
@@ -355,15 +520,11 @@ INDEX_HTML = r"""<!doctype html>
 </style></head>
 <body><div class="wrap">
   <h1>ARIMA &amp; Prophet Benchmark</h1>
-  <p class="sub">A rolling-origin backtest of <b>ARIMA</b> (pmdarima) and <b>Prophet</b> (Facebook) on your real data — two independent models, each from its own library.
+  <p class="sub">A rolling-origin backtest of <b>SSA</b> (this system), <b>ARIMA</b> (pmdarima) and <b>Prophet</b> (Facebook) on your real data — three independent models, each from its own library.
      Use these numbers to compare against your existing SSA. Headline metric is <b>MASE</b> — scale-free, scored against the naïve baseline; lower is better and below 1.0 beats naïve.
-     Fully isolated: it fetches your data server-side using the token you paste, and touches nothing in your app or your SSA service.</p>
+     Fully isolated: it reads your data directly from MongoDB (read-only) — no token, no backend needed — and touches nothing in your app or your SSA service.</p>
 
   <div class="panel">
-    <div class="row" style="margin-bottom:14px">
-      <div class="fld" style="flex:1;min-width:240px"><label>Laravel API URL</label><input id="apiUrl" placeholder="http://127.0.0.1:8000"></div>
-      <div class="fld" style="flex:2;min-width:280px"><label>Bearer token (from your logged-in session)</label><input id="token" type="password" placeholder="paste your admin token"></div>
-    </div>
     <div class="row">
       <div class="fld"><label>Series</label><div class="seg" id="seriesSeg"></div></div>
       <div class="fld" id="itemWrap" style="display:none"><label>Item</label><select id="item"></select></div>
@@ -375,31 +536,24 @@ INDEX_HTML = r"""<!doctype html>
 
   <div id="err" class="err" style="display:none"></div>
   <div id="out"></div>
-  <p id="hint" class="muted">Paste your API URL + token, pick a series, then <b style="color:var(--gold)">Run Benchmark</b>.</p>
+  <p id="hint" class="muted">Pick a series and period, then <b style="color:var(--gold)">Run Benchmark</b>.</p>
 </div>
 
 <script>
 const SERIES=[["sales_revenue","Sales Revenue",true],["sales_qty","Sales Quantity",false],["inventory","Inventory Demand",false]];
 const PERIODS=[["weekly","Weekly"],["monthly","Monthly"],["annually","Annually"]];
-const COLORS={ARIMA:"#60a5fa",Prophet:"#34d399"};
+const COLORS={SSA:"#d4a843",ARIMA:"#60a5fa",Prophet:"#34d399"};
 let series="sales_revenue", period="weekly";
 const $=id=>document.getElementById(id);
-
-// restore saved connection
-try{ $("apiUrl").value=localStorage.getItem("mc_api")||"http://127.0.0.1:8000"; $("token").value=localStorage.getItem("mc_tok")||""; }catch(e){}
 
 function seg(el,items,cur,on){ el.innerHTML=""; items.forEach(it=>{const b=document.createElement("button");b.textContent=it[1];b.className=it[0]===cur?"on":"";b.onclick=()=>on(it[0]);el.appendChild(b);}); }
 function drawSeries(){ seg($("seriesSeg"),SERIES,series,v=>{series=v;drawSeries();$("itemWrap").style.display=v==="inventory"?"flex":"none";if(v==="inventory")loadItems();}); }
 function drawPeriod(){ seg($("periodSeg"),PERIODS,period,v=>{period=v;drawPeriod();}); }
 drawSeries(); drawPeriod();
 
-function conn(){ return {api_url:$("apiUrl").value.trim(), token:$("token").value.trim()}; }
-function save(){ try{localStorage.setItem("mc_api",$("apiUrl").value.trim());localStorage.setItem("mc_tok",$("token").value.trim());}catch(e){} }
-
 async function loadItems(){
-  const c=conn(); if(!c.api_url||!c.token) return;
   try{
-    const r=await fetch("/api/inventory-list",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(c)});
+    const r=await fetch("/api/inventory-list-db");
     const d=await r.json(); if(!r.ok) throw new Error(d.detail||"failed");
     $("item").innerHTML=(d.items||[]).map(i=>`<option value="${i.id}">${i.name||i.id}</option>`).join("");
   }catch(e){ $("item").innerHTML="<option>(could not load items)</option>"; }
@@ -408,13 +562,11 @@ async function loadItems(){
 function fmtNum(v){ return v==null?"—":Number(v).toLocaleString("en-US",{maximumFractionDigits:2}); }
 
 $("runBtn").onclick=async()=>{
-  save(); const c=conn();
-  if(!c.api_url||!c.token){ showErr("Enter your Laravel API URL and a bearer token first."); return; }
   $("err").style.display="none"; $("out").innerHTML=""; $("hint").style.display="none";
   $("runBtn").disabled=true; $("runBtn").textContent="Running…";
   try{
-    const body={...c,series,forecast_type:period,forecast_periods:Number($("horizon").value)||4,inventory_id: series==="inventory"?$("item").value:null};
-    const r=await fetch("/api/benchmark-live",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const body={series,forecast_type:period,forecast_periods:Number($("horizon").value)||4,inventory_id: series==="inventory"?$("item").value:null};
+    const r=await fetch("/api/benchmark-db",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json(); if(!r.ok) throw new Error(d.detail||"Benchmark failed.");
     render(d);
   }catch(e){ showErr(e.message||"Something went wrong."); }
@@ -429,7 +581,7 @@ function render(res){
   const nRanked=ranked.filter(r=>r.rank).length;
   const rc=r=>r===1?"#4ade80":r===2?"#d4a843":"#8b93a1";
   let h=`<div class="verdict"><span class="badge">${res.winner??"—"}</span>
-    <span class="muted">is the stronger of the two on this series, by MASE. Compare these against your existing SSA's accuracy.
+    <span class="muted">is the strongest on this series, by MASE (lower is better; under 1 beats the seasonal-naive baseline).
     Backtest: ${res.backtest.windows} rolling window(s), ${res.backtest.test_points_per_model} test points/model${res.raw_points!=null?` · ${res.raw_points} raw records`:""}.</span></div>`;
   h+=`<div class="panel"><div class="chart-scroll"><table><thead><tr><th>Rank</th><th>Model</th><th>MASE</th><th>RMSE</th><th>MAE</th><th>sMAPE</th><th>Test pts</th></tr></thead><tbody>`;
   ranked.forEach(m=>{ h+=`<tr class="${m.rank===1?"win":""}">
@@ -443,9 +595,12 @@ function render(res){
 }
 
 function chart(res,money){
+  // One panel per model. Overlaying three forecasts on a single axis made them
+  // impossible to read against each other; separate panels on a SHARED y-scale
+  // keep them comparable while letting each model be read on its own.
   const H=res.series.dates.map((d,i)=>({d,v:res.series.values[i]})).slice(-24);
   const fdates=res.forecast_dates||[];
-  const W=1000,ht=320,pL=52,pR=14,pT=14,pB=26;
+  const W=1000,ht=190,pL=52,pR=14,pT=16,pB=24;
   const vals=H.map(x=>x.v);
   res.models.forEach(m=>(m.forecast||[]).forEach(v=>{if(v!=null)vals.push(v);}));
   if(vals.length===0) return "<p class='muted'>No data to plot.</p>";
@@ -453,20 +608,27 @@ function chart(res,money){
   const total=H.length+fdates.length;
   const X=i=>pL+(W-pL-pR)*(total<=1?0:i/(total-1));
   const Y=v=>pT+(ht-pT-pB)*(1-(v-mn)/(mx-mn));
-  // actual polyline
   const aPts=H.map((x,i)=>`${X(i).toFixed(1)},${Y(x.v).toFixed(1)}`).join(" ");
   const bx=X(H.length-1), lastV=H.length?H[H.length-1].v:0;
-  let lines=`<polyline fill="none" stroke="#e6e9ee" stroke-width="2.4" points="${aPts}"/>`;
-  res.models.forEach(m=>{
+  let grid=""; for(let g=0;g<=3;g++){ const yy=pT+(ht-pT-pB)*g/3; const val=mx-(mx-mn)*g/3;
+    grid+=`<line x1="${pL}" y1="${yy}" x2="${W-pR}" y2="${yy}" stroke="#2a2f37" stroke-width="1"/><text x="${pL-6}" y="${yy+3}" fill="#8b93a1" font-size="10" text-anchor="end">${(money?"₱":"")+(Math.abs(val)>=1000?(val/1000).toFixed(1)+"k":Math.round(val))}</text>`; }
+  const nowLine=`<line x1="${bx.toFixed(1)}" y1="${pT}" x2="${bx.toFixed(1)}" y2="${ht-pB}" stroke="#4ade80" stroke-width="1.2" stroke-dasharray="4 3"/><text x="${(bx+4).toFixed(1)}" y="${pT+10}" fill="#4ade80" font-size="10">now</text>`;
+
+  const ranked=[...res.models].sort((a,b)=>(a.mase==null)-(b.mase==null)||(a.mase??9e9)-(b.mase??9e9));
+  return ranked.map(m=>{
+    const col=COLORS[m.model]||"#888";
     const fc=m.forecast||[]; const pts=[`${bx.toFixed(1)},${Y(lastV).toFixed(1)}`];
     for(let i=0;i<fdates.length;i++){ if(fc[i]!=null) pts.push(`${X(H.length+i).toFixed(1)},${Y(fc[i]).toFixed(1)}`); }
-    if(pts.length>1){ const solid=m.rank===1; lines+=`<polyline fill="none" stroke="${COLORS[m.model]||"#888"}" stroke-width="${solid?2.6:1.8}" ${solid?"":'stroke-dasharray="5 3"'} points="${pts.join(" ")}"/>`; }
-  });
-  // gridlines + y labels
-  let grid=""; for(let g=0;g<=4;g++){ const yy=pT+(ht-pT-pB)*g/4; const val=mx-(mx-mn)*g/4; grid+=`<line x1="${pL}" y1="${yy}" x2="${W-pR}" y2="${yy}" stroke="#2a2f37" stroke-width="1"/><text x="${pL-6}" y="${yy+3}" fill="#8b93a1" font-size="10" text-anchor="end">${(money?"₱":"")+(Math.abs(val)>=1000?(val/1000).toFixed(1)+"k":Math.round(val))}</text>`; }
-  const nowLine=`<line x1="${bx.toFixed(1)}" y1="${pT}" x2="${bx.toFixed(1)}" y2="${ht-pB}" stroke="#4ade80" stroke-width="1.2" stroke-dasharray="4 3"/><text x="${(bx+4).toFixed(1)}" y="${pT+10}" fill="#4ade80" font-size="10">now</text>`;
-  const lgd=`<div class="lgd"><span><span class="sw" style="background:#e6e9ee"></span>Actual</span>`+res.models.map(m=>`<span><span class="sw" style="background:${COLORS[m.model]||"#888"}"></span>${m.model}</span>`).join("")+`</div>`;
-  return `<div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${ht}" width="100%" style="min-width:620px;display:block">${grid}${nowLine}${lines}</svg></div>${lgd}`;
+    const fline = pts.length>1 ? `<polyline fill="none" stroke="${col}" stroke-width="2.6" points="${pts.join(" ")}"/>` : "";
+    const head = `<div style="display:flex;align-items:baseline;gap:10px;margin:14px 0 2px">
+        <span class="sw" style="background:${col}"></span>
+        <b style="font-size:14px">${m.model}</b>
+        <span class="muted" style="font-size:12px">MASE ${m.mase??"—"}${m.mase!=null&&m.mase<1?" · beats naive":""}</span>
+      </div>`;
+    const failed = m.mase==null ? `<p class="muted" style="font-size:12px;margin:0 0 6px">No score - the model failed on this series.</p>` : "";
+    return head+failed+`<div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${ht}" width="100%" style="min-width:620px;display:block">${grid}${nowLine}<polyline fill="none" stroke="#e6e9ee" stroke-width="2.2" points="${aPts}"/>${fline}</svg></div>`;
+  }).join("")
+  + `<div class="lgd" style="margin-top:8px"><span><span class="sw" style="background:#e6e9ee"></span>Actual (same in every panel)</span></div>`;
 }
-</script>
+</script></script>
 </body></html>"""

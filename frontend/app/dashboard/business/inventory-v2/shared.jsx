@@ -518,11 +518,15 @@ export function EmptyState({ icon, message, sub }) {
 }
 
 // ── SummaryCard ───────────────────────────────────────────────────────────────
-export function SummaryCard({ label, value, sub, color = 'var(--white)', accent = false }) {
+// valueSize exists because some cards hold a name, not a number. A product name
+// at the default 22px wraps to three lines and the card stops reading as a stat.
+// It takes a step from the same scale (11/12/13/14/22), never an arbitrary size,
+// and defaults to the original so every existing caller is unchanged.
+export function SummaryCard({ label, value, sub, color = 'var(--white)', accent = false, valueSize = '22px' }) {
   return (
     <div className="pmp-stat" style={{ ...S.cardSm, flex:1, minWidth:'140px', borderTop: accent ? '3px solid var(--gold)' : undefined }}>
       <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:'6px' }}>{label}</div>
-      <div style={{ fontSize:'22px', fontWeight:700, color }}>{value}</div>
+      <div style={{ fontSize:valueSize, fontWeight:700, color }}>{value}</div>
       {sub && <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'3px' }}>{sub}</div>}
     </div>
   );
