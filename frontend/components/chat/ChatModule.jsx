@@ -6,6 +6,7 @@ import ChatWindow from './ChatWindow';
 import ChatInput from './ChatInput';
 import { getConversations, getMessages, sendMessage, markAsRead, sendHeartbeat } from '../../lib/chatApi';
 import { getEcho } from '../../lib/echo';
+import { useAccess } from '@/contexts/AccessContext';
 import './chat.css';
 
 
@@ -27,7 +28,13 @@ const ChatModule = ({ user, token, addToCart }) => {
   // Ref keeps handleNewMessage free of stale closure on activeConversation
   const activeConvRef = useRef(null);
 
-  const isAdmin = useMemo(() => user?.role === 'admin' || user?.role === 'owner', [user]);
+  // The shop's side of the inbox. Only the dashboard's Messages page renders this, and that page is
+  // open to owner, system admin and staff with the Messages row - so anyone here who is not a
+  // customer is the shop. Checking the role NAME shut staff out and gave them the customer's view.
+  const isAdmin = useMemo(() => !!user?.role && user.role !== 'customer', [user]);
+  // "See" without "Work" on Messages: read the inbox, no reply box (the server refuses it anyway).
+  const { can } = useAccess();
+  const mayReply = !isAdmin || can('messages.work');
 
   const handleTyping = useCallback(() => {
     if (!conversationChannelRef.current) return;
@@ -436,6 +443,10 @@ const ChatModule = ({ user, token, addToCart }) => {
                 </a>.
               </>
             ) : 'They left no address, so there is no way to answer this one.'}
+          </div>
+        ) : activeConversation && !isVirtualEmpty && !mayReply ? (
+          <div style={{ padding: '12px 16px', fontSize: 13, color: 'var(--gray)', borderTop: '1px solid var(--border)' }}>
+            You can read this conversation. Replying needs Messages (Work) in Staff and access.
           </div>
         ) : activeConversation && !isVirtualEmpty && (
           <ChatInput

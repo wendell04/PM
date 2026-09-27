@@ -27,7 +27,7 @@ Broadcast::channel('conversation.{conversationId}', function ($user, $conversati
     $participants = array_map('strval', $conversation->participants ?? []);
 
     return in_array($userId, $participants, true)
-        || in_array($user->role ?? null, ['admin', 'owner']);
+        || \App\Support\ChatAccess::shopSide($user);
 });
 
 // Private channel for one order's live status. OrderStatusUpdated broadcasts here and My Orders
@@ -44,7 +44,8 @@ Broadcast::channel('order.{orderId}', function ($user, $orderId) {
 
 // Private admin chat channel (for global message broadcasts to all admins)
 Broadcast::channel('admin.chat', function ($user) {
-    return in_array($user->role ?? null, ['admin', 'owner']);
+    // Everyone on the shop's side of the inbox, including staff with the Messages row.
+    return \App\Support\ChatAccess::shopSide($user);
 });
 
 // Presence channel - tracks who is currently online in chat

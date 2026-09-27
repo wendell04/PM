@@ -23,8 +23,8 @@ class ChatController extends Controller
     {
         try {
             $user = $request->user();
-            // Staff-sees-all-conversations flag (Super Admin / Owner). Data scoping, not a gate.
-            $isAdmin = \App\Support\Rbac::isSuperAdmin($user) || \App\Support\Rbac::isOwner($user);
+            // Sees the shop's whole inbox: owner, system admin, and staff with the Messages row.
+            $isAdmin = \App\Support\ChatAccess::shopSide($user);
 
             // Get existing conversations where the user is a participant
             $conversations = Conversation::where('participants', (string)$user->_id)
@@ -232,7 +232,7 @@ class ChatController extends Controller
             // Check if user is participant or admin (explicit string cast to avoid ObjectId/string mismatch)
             $userId       = (string)($user->_id ?? $user->id ?? '');
             $participants = array_map('strval', $conversation->participants ?? []);
-            if (!in_array($userId, $participants, true) && !in_array($user->role ?? null, ['admin', 'owner'])) {
+            if (!in_array($userId, $participants, true) && !\App\Support\ChatAccess::shopSide($user)) {
                 return $this->unauthorizedResponse();
             }
 
@@ -286,7 +286,7 @@ class ChatController extends Controller
                 // talks back. recipient_id was free-form, so one customer could open a thread with
                 // another and message them unsolicited - a channel nobody asked for and nobody
                 // moderates. Staff keep the run of the place; customers reach the shop only.
-                $isStaff = in_array($user->role ?? null, ['admin', 'owner'], true);
+                $isStaff = \App\Support\ChatAccess::canReply($user);
                 if (!$isStaff) {
                     $recipient = User::find($recipientId);
                     if (!$recipient || !in_array($recipient->role ?? null, ['admin', 'owner'], true)) {
@@ -294,17 +294,27 @@ class ChatController extends Controller
                     }
                 }
 
-                $participants = [(string)$user->_id, (string)$recipientId];
+                // A staff member on the inbox writes INTO the shop's conversation with the customer,
+                // under their own name - one thread per customer, as in any shared inbox. Starting a
+                // thread as themselves gave the customer a second chat beside the shop's, and their
+                // side of the app only ever opens one of them.
+                $sideId = (string) $user->_id;
+                if ($isStaff && !\App\Support\Rbac::isSuperAdmin($user) && !\App\Support\Rbac::isOwner($user)) {
+                    $shop = User::whereIn('role', ['admin', 'owner'])->first();
+                    if ($shop) $sideId = (string) $shop->_id;
+                }
+
+                $participants = [$sideId, (string)$recipientId];
                 sort($participants);
 
                 // Find existing 1-to-1 conversation using PHP-level filter
                 // (avoids MongoDB $all/$size operator compatibility issues)
-                $existing = Conversation::where('participants', (string)$user->_id)->get();
-                $conversation = $existing->first(function ($c) use ($recipientId, $user) {
+                $existing = Conversation::where('participants', $sideId)->get();
+                $conversation = $existing->first(function ($c) use ($recipientId, $sideId) {
                     $parts = array_map('strval', $c->participants ?? []);
                     return count($parts) === 2
                         && in_array((string)$recipientId, $parts, true)
-                        && in_array((string)$user->_id, $parts, true);
+                        && in_array($sideId, $parts, true);
                 });
 
                 if (!$conversation) {
@@ -328,7 +338,7 @@ class ChatController extends Controller
             $senderId     = (string) ($user->_id ?? $user->id ?? '');
             $participants = array_map('strval', $conversation->participants ?? []);
             if (!in_array($senderId, $participants, true)
-                && !in_array($user->role ?? null, ['admin', 'owner'], true)) {
+                && !\App\Support\ChatAccess::canReply($user)) {
                 return $this->unauthorizedResponse();
             }
 
@@ -463,12 +473,18 @@ class ChatController extends Controller
             // blocks an order could sit unanswered for days with nobody told it had been asked.
             try {
                 $recipientId = (string) $request->input('recipient_id', '');
-                if ($recipientId === '' && !empty($conversation->participants)) {
-                    $recipientId = (string) collect($conversation->participants)
-                        ->first(fn ($pid) => (string) $pid !== (string) $user->_id, '');
-                }
                 $senderIsStaff = in_array($user->role ?? null, ['admin', 'owner', 'superAdmin', 'staff'], true)
                     || !empty($user->role) && $user->role !== 'customer';
+                if (($recipientId === '' || $senderIsStaff) && !empty($conversation->participants)) {
+                    $others = collect($conversation->participants)->map(fn ($p) => (string) $p)
+                        ->reject(fn ($pid) => $pid === (string) $user->_id)->values();
+                    // A staff member writes into the shop's thread without being in it, so "the other
+                    // participant" can be the shop account. The one to tell is the customer.
+                    $customer = $senderIsStaff
+                        ? User::whereIn('_id', $others->all())->where('role', 'customer')->first()
+                        : null;
+                    $recipientId = $customer ? (string) $customer->_id : (string) ($others->first() ?? '');
+                }
                 if ($recipientId !== '' && $senderIsStaff) {
                     // One unread notification per conversation, not one per message. A shop that
                     // types four short lines is having a conversation, not sending four alerts, and
@@ -603,7 +619,7 @@ class ChatController extends Controller
             $readerId     = (string) ($user->_id ?? $user->id ?? '');
             $participants = array_map('strval', $conversation->participants ?? []);
             if (!in_array($readerId, $participants, true)
-                && !in_array($user->role ?? null, ['admin', 'owner'], true)) {
+                && !\App\Support\ChatAccess::shopSide($user)) {
                 return $this->unauthorizedResponse();
             }
 
@@ -764,8 +780,7 @@ class ChatController extends Controller
     {
         try {
             $user = $request->user();
-            if (!in_array($user->role ?? null, ['admin', 'owner'], true)
-                && !\App\Support\Rbac::isSuperAdmin($user) && !\App\Support\Rbac::isOwner($user)) {
+            if (!\App\Support\ChatAccess::canReply($user)) {
                 return $this->unauthorizedResponse();
             }
             $conversation = Conversation::find($id);
