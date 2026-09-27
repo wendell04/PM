@@ -46,7 +46,11 @@ ALLOWED_ORIGINS = (
 # *.pages.dev and these responses are credentialed.
 _preview_regex = (
     None if os.getenv("APP_ENV", "").lower() == "production"
-    else r"https://[^.]+\.pages\.dev"
+    # A Pages deployment URL is <commit-or-branch>.<project>.pages.dev - two
+    # labels, not one. Matching a single label allowed only the bare project
+    # alias, so every preview and branch deployment was refused at preflight
+    # and the browser reported a plain "Failed to fetch".
+    else r"https://([A-Za-z0-9-]+\.)*[A-Za-z0-9-]+\.pages\.dev"
 )
 
 logger.info("CORS allows: %s%s", ", ".join(ALLOWED_ORIGINS),
@@ -58,7 +62,11 @@ app.add_middleware(
     allow_origin_regex=_preview_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    # "ngrok-skip-browser-warning" is sent by several dashboard fetches (see the
+    # same list in backend/config/cors.php). A custom header that is not listed
+    # here makes Starlette answer the preflight with 400, which the browser
+    # reports as "Failed to fetch" - so it is listed rather than left to bite.
+    allow_headers=["Content-Type", "Authorization", "Accept", "ngrok-skip-browser-warning"],
 )
 
 class DataRow(BaseModel):

@@ -42,7 +42,10 @@ return [
         // OUTSIDE production (for previews/testing). In production, pin the exact deployed
         // frontend via FRONTEND_URL (allowed_origins above) - or use the custom domain, which
         // is always allowed above.
-        env('APP_ENV') === 'production' ? null : '#^https://[^.]+\.pages\.dev$#',
+        // A Pages deployment URL is <commit-or-branch>.<project>.pages.dev - two labels. The
+        // single-label form matched only the bare project alias, so real preview URLs were
+        // refused and their fetches failed with a bare "Failed to fetch".
+        env('APP_ENV') === 'production' ? null : '#^https://([A-Za-z0-9-]+\.)*[A-Za-z0-9-]+\.pages\.dev$#',
     ])),
 
     // 'ngrok-skip-browser-warning' is sent by several client-side admin fetches (a leftover from the
