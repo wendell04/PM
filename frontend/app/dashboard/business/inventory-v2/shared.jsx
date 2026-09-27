@@ -260,7 +260,9 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
           boxSizing: 'border-box', whiteSpace: 'nowrap',
           overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
-        {(hasValue && selected) ? selected.label : placeholder}
+        {/* An option whose value is '' ("All Statuses", "Select courier") is still an option with a
+            name - showing the generic placeholder instead made the filter look unset. */}
+        {selected ? selected.label : placeholder}
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
           stroke={open ? 'var(--gold)' : 'var(--gray)'} strokeWidth="2.5"
           style={{ position: 'absolute', right: '9px', top: '50%',

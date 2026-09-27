@@ -2756,13 +2756,16 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 // from it, and the audit keeps it. Without one the refund fell back to "everything".
                 const needsReason = String(selStatus).toLowerCase() === 'cancelled'
                   && (!cancelReason || (cancelReason === 'Other' && !cancelOther.trim()));
-                const off = selStatus === lo.orderStatus || needsReason;
+                // Sending it out names who carries it - that is what the customer's "on its way" says.
+                const needsCourier = isForDelivery(selStatus) && !String(courier || '').trim();
+                const off = selStatus === lo.orderStatus || needsReason || needsCourier;
                 return mayStatus && (<>
                   <button onClick={() => !off && setConfirmSt(true)} disabled={off}
                     style={{ ...S.btnSmGhost, justifyContent:'center', opacity: off?.5:1, cursor: off?'not-allowed':'pointer' }}>
                     Update Status
                   </button>
                   {needsReason && <div style={{ fontSize:'11px', color:'var(--gray)' }}>Pick why you are cancelling first{cancelReason === 'Other' ? ' - and say what happened' : ''}.</div>}
+                  {needsCourier && <div style={{ fontSize:'11px', color:'var(--gray)' }}>Choose who is carrying it first.</div>}
                 </>);
               })()}
               {updateErr && <div style={{ fontSize:'11px', color:'var(--st-red-fg)' }}>{updateErr}</div>}

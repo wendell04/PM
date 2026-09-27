@@ -422,7 +422,7 @@ export default function SettingsPage() {
           // least likely to need protecting. Matched on title, so an edited clause is left alone and a
           // deliberately deleted one only returns if its title is gone entirely.
           const saved = Array.isArray(d.data.customOrderTerms) && d.data.customOrderTerms.length
-            ? d.data.customOrderTerms.map(t => ({ title: t.title ?? '', body: t.body ?? '', mode: t.mode ?? 'both' }))
+            ? d.data.customOrderTerms.map(t => ({ title: t.title ?? '', body: t.body ?? '', mode: t.mode ?? 'all' }))
             : null;
           if (!saved) {
             setTermsRows(DEFAULT_CUSTOM_ORDER_TERMS.map(t => ({ title: t.title, body: t.body, mode: t.mode })));
@@ -900,7 +900,9 @@ export default function SettingsPage() {
   // ── Save shipping settings ────────────────────────────────
   const handleSaveTerms = async () => {
     setTermsMsg('');
-    const clean = termsRows.map(t => ({ title: (t.title || '').trim(), body: (t.body || '').trim(), mode: t.mode || 'both' })).filter(t => t.title && t.body);
+    // A clause with no scope is shown as "Apply to all", so it is saved as all - saving it as 'both'
+    // quietly dropped it from every quotation customer's terms.
+    const clean = termsRows.map(t => ({ title: (t.title || '').trim(), body: (t.body || '').trim(), mode: t.mode || 'all' })).filter(t => t.title && t.body);
     setSavingTerms(true);
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/terms`, {
@@ -909,10 +911,11 @@ export default function SettingsPage() {
         body: JSON.stringify({ customOrderTerms: clean }),
       }, 15000);
       const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Failed to save terms.');
-      setTermsRows((d.data?.customOrderTerms ?? clean).map(t => ({ title: t.title ?? '', body: t.body ?? '', mode: t.mode ?? 'both' })));
+      // Say which field, not only "Validation failed".
+      if (!res.ok) throw new Error((d.errors && Object.values(d.errors).flat()[0]) || d.message || 'Failed to save terms.');
+      setTermsRows((d.data?.customOrderTerms ?? clean).map(t => ({ title: t.title ?? '', body: t.body ?? '', mode: t.mode ?? 'all' })));
       setSettingsTermsVersion(Number(d.data?.termsVersion ?? settingsTermsVersion));
-      setTermsMsg('Terms saved.');
+      setTermsMsg(d.message || 'Terms saved.');
     } catch (err) { setTermsMsg(err.message || 'Failed to save terms.'); }
     finally { setSavingTerms(false); }
   };
@@ -930,10 +933,10 @@ export default function SettingsPage() {
         body: JSON.stringify({ registrationTerms: clean }),
       }, 15000);
       const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Failed to save registration terms.');
+      if (!res.ok) throw new Error((d.errors && Object.values(d.errors).flat()[0]) || d.message || 'Failed to save registration terms.');
       setRegTermsRows((d.data?.registrationTerms ?? clean).map(t => ({ title: t.title ?? '', body: t.body ?? '' })));
       setRegTermsVersion(Number(d.data?.registrationTermsVersion ?? regTermsVersion));
-      setRegTermsMsg('Registration terms saved.');
+      setRegTermsMsg(d.message || 'Registration terms saved.');
     } catch (err) { setRegTermsMsg(err.message || 'Failed to save registration terms.'); }
     finally { setSavingRegTerms(false); }
   };

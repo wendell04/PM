@@ -1518,6 +1518,10 @@ class OrderController extends Controller
 
             // Store courier info when moving to (Out for) Delivery - casing-tolerant.
             if (isset($validated['orderStatus']) && OrderStatus::normalize($validated['orderStatus']) === OrderStatus::FOR_DELIVERY) {
+                // The customer is told it is on its way and with whom; with no courier that notice is empty.
+                if (!trim((string) $request->input('courierName', ''))) {
+                    return $this->errorResponse('Choose who is carrying it before sending it out.', 422);
+                }
                 $order->courierName    = $request->input('courierName') ?: null;
                 $order->trackingNumber = $request->input('trackingNumber') ?: null;
                 // Lalamove and Grab give a share link and no number; a parcel gives a number and

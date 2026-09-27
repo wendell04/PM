@@ -125,6 +125,17 @@ class SettingsController extends Controller
      * "reworded: Design fee" rather than only that the terms changed. (A first save from the
      * built-in list shows every clause as added; that is what happened.)
      */
+    /** Same clauses, same order, same wording and scope - nothing to version. */
+    private static function sameClauses(array $before, array $after): bool
+    {
+        $norm = fn (array $list) => array_map(fn ($t) => [
+            'title' => trim((string) ($t['title'] ?? '')),
+            'body'  => trim((string) ($t['body'] ?? '')),
+            'mode'  => $t['mode'] ?? null,
+        ], array_values($list));
+        return $norm($before) === $norm($after);
+    }
+
     private static function clauseDelta(array $before, array $after): array
     {
         $key = fn ($t) => mb_strtolower(trim((string) ($t['title'] ?? '')));
@@ -636,6 +647,12 @@ class SettingsController extends Controller
             ], array_filter($validated['registrationTerms'],
                 fn ($t) => trim($t['title'] ?? '') !== '' && trim($t['body'] ?? '') !== '')));
 
+            if (self::sameClauses((array) ($owner->registrationTerms ?? []), $clean)) {
+                return $this->successResponse('No changes - nothing to save.', [
+                    'registrationTerms'        => $owner->registrationTerms,
+                    'registrationTermsVersion' => (int) ($owner->registrationTermsVersion ?? 1),
+                ]);
+            }
             $termsDelta = self::clauseDelta((array) ($owner->registrationTerms ?? []), $clean);
             $owner->registrationTerms          = $clean;
             $owner->registrationTermsVersion   = (int) ($owner->registrationTermsVersion ?? 1) + 1;
@@ -694,15 +711,26 @@ class SettingsController extends Controller
                 'customOrderTerms'          => 'present|array|max:30',
                 'customOrderTerms.*.title'  => 'required|string|max:120',
                 'customOrderTerms.*.body'   => 'required|string|max:2000',
-                'customOrderTerms.*.mode'   => 'nullable|string|in:both,upload,request,quote',
+                // 'all' is what every default clause uses (upload, request AND quotation). It was
+                // missing here, so any save containing one failed with "Validation failed".
+                'customOrderTerms.*.mode'   => 'nullable|string|in:all,both,upload,request,quote',
             ]);
 
             $clean = array_values(array_map(fn ($t) => [
                 'title' => trim(strip_tags($t['title'])),
                 'body'  => trim(strip_tags($t['body'])),
-                'mode'  => in_array($t['mode'] ?? 'both', ['both', 'upload', 'request', 'quote'], true) ? ($t['mode'] ?? 'both') : 'both',
+                // Unknown or missing means 'all' - the widest scope, the same default the page shows.
+                'mode'  => in_array($t['mode'] ?? 'all', ['all', 'both', 'upload', 'request', 'quote'], true) ? ($t['mode'] ?? 'all') : 'all',
             ], array_filter($validated['customOrderTerms'], fn ($t) => trim($t['title'] ?? '') !== '' && trim($t['body'] ?? '') !== '')));
 
+            // Saving the same wording again is not a new version: bumping it would record that every
+            // customer from now on accepted "version N+1" of a contract nobody changed.
+            if (self::sameClauses((array) ($owner->customOrderTerms ?? []), $clean)) {
+                return $this->successResponse('No changes - nothing to save.', [
+                    'customOrderTerms' => $owner->customOrderTerms,
+                    'termsVersion'     => (int) ($owner->termsVersion ?? 1),
+                ]);
+            }
             $termsDelta = self::clauseDelta((array) ($owner->customOrderTerms ?? []), $clean);
             $owner->customOrderTerms = $clean;
             $owner->termsVersion     = (int) ($owner->termsVersion ?? 1) + 1;
