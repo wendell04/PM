@@ -98,6 +98,12 @@ export function inDateRange(dateStr, range, from, to) {
     return true;
   }
   if (range === 'month') return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  // This week = Monday to today, the shop's working week.
+  if (range === 'week') {
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    return day >= monday && day <= today;
+  }
   if (range === 'last') {
     const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     return d.getFullYear() === lm.getFullYear() && d.getMonth() === lm.getMonth();

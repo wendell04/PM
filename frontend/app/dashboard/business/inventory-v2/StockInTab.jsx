@@ -2,6 +2,15 @@
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow , pesoShort } from '@/components/dashboard/phone';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
+import { inDateRange } from './StockOutHistoryTab';
+
+const STOCK_IN_RANGES = [
+  { value: 'week',   label: 'This week' },
+  { value: 'month',  label: 'This month' },
+  { value: 'last',   label: 'Last month' },
+  { value: 'all',    label: 'All time' },
+  { value: 'custom', label: 'Custom range' },
+];
 import { adjustStock, createReturn } from './api';
 import { useAccess } from '@/contexts/AccessContext';
 import { scrollToFirstError } from '@/lib/scrollToError';
@@ -114,6 +123,11 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
   const [errors2,        setErr2]           = useState({});
 
   const [histSearch, setHistSearch] = useState('');
+  // Opens on this month: the question on this page is usually "what came in lately", and the whole
+  // history summed into the cards (73 batches, P154k) answered a different one.
+  const [range, setRange] = useState('month');
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo,   setRangeTo]   = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const openModal = () => {
@@ -270,20 +284,24 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
     if (dateDiff !== 0) return dateDiff;
     return b.id > a.id ? -1 : b.id < a.id ? 1 : 0;
   }), [batches]);
+  // The cards count the range; the search narrows the list inside it.
+  const inRange = useMemo(() => sortedBatches.filter(b => inDateRange(b.date, range, rangeFrom, rangeTo)),
+    [sortedBatches, range, rangeFrom, rangeTo]);
   const histFiltered  = useMemo(() => {
-    if (!histSearch.trim()) return sortedBatches;
+    if (!histSearch.trim()) return inRange;
     const q = histSearch.toLowerCase();
-    return sortedBatches.filter(b => {
+    return inRange.filter(b => {
       const mat = materials.find(m => m.id === b.matId);
       return b.invoiceNo?.toLowerCase().includes(q) || mat?.name?.toLowerCase().includes(q) || b.vendorName?.toLowerCase().includes(q);
     });
-  }, [sortedBatches, histSearch, materials]);
+  }, [inRange, histSearch, materials]);
 
   const { slice: hSlice, page: hPage, perPage: hPerPage, total: hTotal, setPage: setHPage, setPerPage: setHPerPage } = usePagination(histFiltered);
   const isPhone = useIsPhone();
 
-  const totalReceived = batches.reduce((s, b) => s + b.qtyReceived, 0);
-  const totalValue    = batches.reduce((s, b) => s + b.qtyReceived * b.unitCost, 0);
+  const totalReceived = inRange.reduce((s, b) => s + b.qtyReceived, 0);
+  const totalValue    = inRange.reduce((s, b) => s + b.qtyReceived * b.unitCost, 0);
+  const rangeLabel    = (STOCK_IN_RANGES.find(r => r.value === range)?.label ?? '').toLowerCase();
 
   return (
     <div style={S.col}>
@@ -291,22 +309,38 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
         <>
           {mayWork && <button onClick={openModal} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.truck} Receive Stock</button>}
           <KpiStrip items={[
-            { key:'b', label:'Batches',  value: batches.length },
+            { key:'b', label:'Batches',  value: inRange.length },
             { key:'q', label:'Qty in',   value: totalReceived.toLocaleString() },
             ...(seeMoney ? [{ key:'v', label:'Value in', value: pesoShort(totalValue), title: formatCurrency(totalValue) }] : []),
           ]} />
           <PhoneFilterBar search={histSearch} onSearch={setHistSearch} placeholder="Search invoice, material, vendor"
-            note={`${hTotal} record${hTotal !== 1 ? 's' : ''}`} />
+            filters={[{ key:'range', label:'When', value:range, defaultValue:'month', onChange:setRange, options: STOCK_IN_RANGES }]}
+            note={`${hTotal} record${hTotal !== 1 ? 's' : ''} - ${rangeLabel}`} />
+          {range === 'custom' && (
+            <div style={{ display:'flex', gap:'8px' }}>
+              <input type="date" value={rangeFrom} max={rangeTo || undefined} onChange={e => setRangeFrom(e.target.value)} style={{ ...S.input, flex:1 }} aria-label="From date" />
+              <input type="date" value={rangeTo} min={rangeFrom || undefined} onChange={e => setRangeTo(e.target.value)} style={{ ...S.input, flex:1 }} aria-label="To date" />
+            </div>
+          )}
         </>
       ) : (<>
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
-        <SummaryCard label="Total Batches"  value={batches.length}                accent />
-        <SummaryCard label="Total Qty In"   value={totalReceived.toLocaleString()} />
-        {seeMoney && <SummaryCard label="Total Value In" value={formatCurrency(totalValue)}     />}
+        <SummaryCard label={`Batches - ${rangeLabel}`}  value={inRange.length}                accent />
+        <SummaryCard label={`Qty in - ${rangeLabel}`}   value={totalReceived.toLocaleString()} />
+        {seeMoney && <SummaryCard label={`Value in - ${rangeLabel}`} value={formatCurrency(totalValue)}     />}
       </div>
 
       <div style={{ ...S.card, ...S.rowBetween }}>
-        <SearchBar value={histSearch} onChange={setHistSearch} placeholder="Search invoice, material, vendor…" style={{ width:'280px' }} />
+        <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
+          <SearchBar value={histSearch} onChange={setHistSearch} placeholder="Search invoice, material, vendor…" style={{ width:'280px' }} />
+          <CustomSelect value={range} onChange={setRange} options={STOCK_IN_RANGES} style={{ width:'160px' }} />
+          {range === 'custom' && (
+            <>
+              <input type="date" value={rangeFrom} max={rangeTo || undefined} onChange={e => setRangeFrom(e.target.value)} style={{ ...S.input, width:'150px' }} aria-label="From date" />
+              <input type="date" value={rangeTo} min={rangeFrom || undefined} onChange={e => setRangeTo(e.target.value)} style={{ ...S.input, width:'150px' }} aria-label="To date" />
+            </>
+          )}
+        </div>
         {mayWork && <button onClick={openModal} style={S.btnPrimary}>{ICONS.truck} Receive Stock</button>}
       </div>
 
