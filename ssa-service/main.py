@@ -178,6 +178,68 @@ def croston_sba(series: np.ndarray, alpha: float = 0.1, sba: bool = True) -> flo
     return float(max(0.0, rate))
 
 
+def apply_forecast_post(raw, hist, dates, forecast_type, is_sparse):
+    """Everything that happens between raw SSA output and what the chart shows.
+
+    Extracted so the BACKTEST can apply it too. Until it did, accuracy was scored
+    on raw SSA while the dashboard displayed a Croston rate, or a dampened and
+    floored curve - two different forecasts reported under one number. On the live
+    revenue series the backtest sat at a flat ~5,516 while the chart showed
+    [2828, 5103, 3929, 6023].
+
+    hist must be the UNFLOORED history for the same window the forecast came from.
+    Returns (values, method, dampened).
+    """
+    out  = np.asarray(raw,  dtype=float)
+    hist = np.asarray(hist, dtype=float)
+    if hist.size == 0:
+        return out, "ssa", False
+
+    annual = (forecast_type == "annually" and dates is not None and len(dates) == len(hist))
+
+    if annual:
+        _sums = pd.Series(hist, index=pd.to_datetime(dates)).resample("YS").sum().values
+        hist_max  = float(_sums.max())  if len(_sums) else 1.0
+        hist_mean = float(_sums.mean()) if len(_sums) else 1.0
+    else:
+        hist_max, hist_mean = float(hist.max()), float(hist.mean())
+    cap = max(hist_max * 1.5, hist_mean * 2, 1.0)
+    out = np.clip(out, 0.0, cap)
+
+    cls, _, _ = demand_profile(hist)
+    if is_sparse and forecast_type in ("weekly", "monthly") and cls in ("intermittent", "lumpy", "new"):
+        rate = croston_sba(hist, alpha=0.1, sba=True)
+        return np.clip(np.full(out.size, rate, dtype=float), 0.0, cap), "sba", False
+
+    dampened = False
+    if not is_sparse:
+        if annual:
+            _s    = pd.Series(hist, index=pd.to_datetime(dates))
+            _sum  = _s.resample("YS").sum()
+            _full = _sum[_s.resample("YS").count() >= 12]
+            _h    = _full.values if len(_full) > 0 else _sum.values
+            _w    = min(3, len(_h))
+            recent_mean = float(_h[-_w:].mean()) if _w > 0 else 0.0
+        else:
+            _sl = hist[-min(8, hist.size):]
+            _nz = _sl[_sl > 0]
+            recent_mean = float(_nz.mean()) if _nz.size > 0 else float(_sl.mean())
+        fmean = float(out.mean())
+        if recent_mean > 0 and fmean > recent_mean * 1.5:
+            out = out * ((recent_mean * 1.5) / fmean)
+            dampened = True
+
+        if forecast_type in ("weekly", "monthly"):
+            _nzr = hist[-26:] if forecast_type == "weekly" else hist[-12:]
+            _nzr = _nzr[_nzr > 0]
+            if _nzr.size > 0:
+                _floor = float(_nzr.mean()) * 0.6
+                _rng   = float(out.max() - out.min())
+                _shaped = (_floor * (0.8 + ((out - out.min()) / _rng) * 0.4)) if _rng > 0                           else np.full_like(out, _floor)
+                out = np.maximum(out, _shaped)
+    return out, "ssa", dampened
+
+
 def _compute_last_period_value(
     original_values: np.ndarray,
     dates: "pd.Series",
@@ -480,7 +542,15 @@ async def forecast(req: ForecastRequest):
                     comps_bt = [0] + comps_bt
 
                 bt_pred = ssa_bt.forecast(comps_bt, steps=bt_periods)
-                bt_pred = np.clip(bt_pred, 0.0, float(train_vals.max()) * 3)
+                # The same transforms the live forecast gets. Without them the
+                # accuracy scored raw SSA while the chart showed a Croston rate or
+                # a dampened, floored curve - one number describing a forecast the
+                # dashboard never displays. History is the unfloored training slice,
+                # so the recent means and demand class match that window.
+                bt_pred, _, _ = apply_forecast_post(
+                    bt_pred, original_values[:bt_start], df["Date"].values[:bt_start],
+                    forecast_type, is_sparse,
+                )
 
                 if forecast_type == "annually":
                     act_s    = pd.Series(bt_actuals, index=pd.to_datetime(bt_raw_dates))
@@ -664,73 +734,22 @@ async def forecast(req: ForecastRequest):
             out_vals  = raw_fc
             out_dates = fc_dates
 
-        # Cap/dampen based on real (unfloored) history so the floor baseline
-        # does not artificially suppress the forecast ceiling.
+        # Cap, Croston override, dampening and floor - all of it now lives in
+        # apply_forecast_post so the backtest can run the identical transforms.
+        # hist_vals stays the unfloored history; downstream CI code still uses it.
         hist_vals = original_values
+        demand_cls, demand_adi, demand_cv2 = demand_profile(original_values)
+        out_vals, forecast_method, is_dampened = apply_forecast_post(
+            out_vals, original_values, df["Date"].values, forecast_type, is_sparse
+        )
         if forecast_type == "annually" and len(hist_vals) > 0:
-            # hist_vals are monthly — aggregate to annual before computing cap
-            # so the ceiling is proportional to annual forecast values.
-            _ann_cap_s    = pd.Series(hist_vals, index=pd.to_datetime(df["Date"]))
-            _ann_cap_sums = _ann_cap_s.resample("YS").sum().values
-            hist_max  = float(_ann_cap_sums.max()) if len(_ann_cap_sums) > 0 else 1.0
+            _ann_cap_sums = pd.Series(hist_vals, index=pd.to_datetime(df["Date"])).resample("YS").sum().values
+            hist_max  = float(_ann_cap_sums.max())  if len(_ann_cap_sums) > 0 else 1.0
             hist_mean = float(_ann_cap_sums.mean()) if len(_ann_cap_sums) > 0 else 1.0
         else:
-            hist_max  = float(hist_vals.max()) if len(hist_vals) > 0 else 1.0
+            hist_max  = float(hist_vals.max())  if len(hist_vals) > 0 else 1.0
             hist_mean = float(hist_vals.mean()) if len(hist_vals) > 0 else 1.0
-        cap      = max(hist_max * 1.5, hist_mean * 2, 1.0)
-        out_vals = np.clip(out_vals, 0.0, cap)
-
-        # ── Phase C: intermittent-demand override (Croston / SBA) ───────────────
-        # SSA needs a repeating pattern; sparse SKU demand has none, so for
-        # intermittent/lumpy inventory items we replace the wiggly SSA curve with a
-        # single honest demand RATE (a flat forecast). Steady items keep SSA.
-        # Restricted to weekly/monthly so the rate granularity matches the output.
-        forecast_method = "ssa"
-        demand_cls, demand_adi, demand_cv2 = demand_profile(original_values)
-        if is_sparse and forecast_type in ("weekly", "monthly") and demand_cls in ("intermittent", "lumpy", "new"):
-            _rate = croston_sba(original_values, alpha=0.1, sba=True)
-            out_vals = np.clip(np.full(len(out_vals), _rate, dtype=float), 0.0, cap)
-            forecast_method = "sba"
-
-        # ── Dampening + floor: sales-only (skip for inventory stock) ────────────
-        is_dampened = False
-        if not is_sparse:
-            # FIX C-1: dampening — cap SSA overshot vs recent actuals at 1.5×
-            if forecast_type == "annually":
-                # Use COMPLETE calendar years only (>= 12 months of data). Partial
-                # first/last years have artificially low sums that would drag the
-                # baseline down and trigger false dampening against the forecast.
-                _ann_series = pd.Series(hist_vals, index=pd.to_datetime(df["Date"]))
-                _ann_sum    = _ann_series.resample("YS").sum()
-                _ann_cnt    = _ann_series.resample("YS").count()
-                _ann_full   = _ann_sum[_ann_cnt >= 12]
-                _ann_hist   = _ann_full.values if len(_ann_full) > 0 else _ann_sum.values
-                _ann_window = min(3, len(_ann_hist))
-                recent_mean = float(_ann_hist[-_ann_window:].mean()) if _ann_window > 0 else 0.0
-            else:
-                recent_window = min(8, len(hist_vals))
-                recent_slice  = hist_vals[-recent_window:]
-                _nz_recent    = recent_slice[recent_slice > 0]
-                recent_mean   = float(_nz_recent.mean()) if len(_nz_recent) > 0 else float(recent_slice.mean())
-            forecast_mean = float(out_vals.mean())
-            if recent_mean > 0 and forecast_mean > recent_mean * 1.5:
-                dampen_target = recent_mean * 1.5
-                out_vals      = out_vals * (dampen_target / forecast_mean)
-                is_dampened   = True
-
-            # FIX C-2: floor sparse-demand forecast at 60% of recent non-zero mean
-            if forecast_type in ("weekly", "monthly"):
-                nz_recent = hist_vals[-26:] if forecast_type == "weekly" else hist_vals[-12:]
-                nz_recent = nz_recent[nz_recent > 0]
-                if len(nz_recent) > 0:
-                    nz_floor  = float(nz_recent.mean()) * 0.6
-                    raw_range = float(out_vals.max() - out_vals.min())
-                    if raw_range > 0:
-                        normalized   = (out_vals - out_vals.min()) / raw_range
-                        shaped_floor = nz_floor * (0.8 + normalized * 0.4)
-                    else:
-                        shaped_floor = np.full_like(out_vals, nz_floor)
-                    out_vals = np.maximum(out_vals, shaped_floor)
+        cap = max(hist_max * 1.5, hist_mean * 2, 1.0)
 
         # ── FIX 4: Cap CI growth so it doesn't explode on long horizons ──────
         # noise_std on sparse spike data can be very large (residuals from spike
