@@ -511,7 +511,6 @@ export default function ShopLayout({ children }) {
   const [notifLoading, setNotifLoading] = useState(false);
   const [selectedNotif, setSelectedNotif] = useState(null);
   const notifRef = useRef(null);
-  const [logoutBanner, setLogoutBanner] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   // Load user info (public access - no login required to browse)
@@ -551,9 +550,9 @@ export default function ShopLayout({ children }) {
       setAuthModalOpen(true);
       setAuthModalInstanceKey(k => k + 1);
     } else if (justLoggedOut) {
+      // No banner: the owner found the green pill out of place with the shop's design. The flag is
+      // still cleared so it does not linger into a later visit.
       sessionStorage.removeItem('justLoggedOut');
-      setLogoutBanner(true);
-      setTimeout(() => setLogoutBanner(false), 4000);
     }
 
     // Listen for avatar/profile updates from other components
@@ -1293,29 +1292,6 @@ export default function ShopLayout({ children }) {
         </div>
       )}
 
-      {logoutBanner && (
-        <div style={{
-          position: 'fixed',
-          bottom: '24px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 9999,
-          background: 'color-mix(in srgb, var(--green) 12%, transparent)',
-          border: '1px solid var(--green)',
-          color: 'var(--green)',
-          fontSize: '0.8125rem',
-          fontWeight: 600,
-          textAlign: 'center',
-          padding: '0.625rem 1.5rem',
-          borderRadius: '8px',
-          letterSpacing: '0.01em',
-          backdropFilter: 'blur(8px)',
-          pointerEvents: 'none',
-          whiteSpace: 'nowrap',
-        }}>
-          ✓ You have been signed out successfully.
-        </div>
-      )}
       <div className="shop-wrapper">
         {/* ── Navbar ── */}
         <nav className={`shop-navbar ${scrolled ? 'scrolled' : ''}`}>
