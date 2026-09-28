@@ -1043,6 +1043,26 @@ export default function ShopClient({
   const [priceMin, setPriceMin]         = useState(0);
   const [priceMax, setPriceMax]         = useState(Infinity);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
+  // The filter rail follows the page only while it fits on screen whole. It once stuck with its own
+  // scrollbar, and the price slider sat below a fold nobody noticed, so the owner had it made static.
+  // Taller than the window (a short laptop, "Show more" opened), it stays static as before.
+  const sidebarRef = useRef(null);
+  const [sidebarTop, setSidebarTop] = useState(null);
+  useEffect(() => {
+    const el = sidebarRef.current;
+    if (!el || typeof window === 'undefined') return;
+    const measure = () => {
+      if (window.innerWidth <= 900) { setSidebarTop(null); return; }
+      const nav = document.querySelector('.shop-navbar');
+      const top = (nav ? nav.getBoundingClientRect().height : 0) + 16;
+      setSidebarTop(el.offsetHeight + top + 16 <= window.innerHeight ? top : null);
+    };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
   const [mobileSheet, setMobileSheet]   = useState(null);
   // The sheet slid up and then vanished on close. It leaves the way it arrived: the class runs the
   // slide-down, and the sheet is unmounted when that finishes.
@@ -1547,7 +1567,8 @@ export default function ShopClient({
         </button>
 
         {/* ── Sidebar ── */}
-        <aside className={`shop-sidebar${sidebarOpen ? ' open' : ''}`}>
+        <aside ref={sidebarRef} className={`shop-sidebar${sidebarOpen ? ' open' : ''}`}
+          style={sidebarTop != null && !sidebarOpen ? { position: 'sticky', top: sidebarTop, alignSelf: 'flex-start' } : undefined}>
 
           {/* Sidebar header */}
           <div className="shop-sidebar-head">
