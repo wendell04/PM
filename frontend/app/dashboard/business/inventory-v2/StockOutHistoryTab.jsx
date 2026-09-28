@@ -339,39 +339,78 @@ function ByOrderTab({ stockOuts, materials }) {
         )}
       </div>
 
-      {manualCount > 0 && (
-        <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-          <div style={{ ...S.th, padding:'12px 16px', fontSize:'12px', letterSpacing:'.5px' }}>
-            Manual / Adjustments - {manualCount} record{manualCount !== 1 ? 's' : ''}
-          </div>
-          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
-            <thead>
-              <tr>
-                {['Date','Material','Qty','Unit Cost','Type','Remarks'].map((h, i) => (
-                  <th key={i} style={{ ...S.th }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {manual.map((so, i) => {
-                const mat = matMap[so.matId];
-                return (
-                  <tr key={i}
-                    style={{ ...S.tr }}
-                    onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'}
-                    onMouseLeave={e => e.currentTarget.style.background=''}
-                  >
-                    <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', whiteSpace:'nowrap' }}>{so.date}</td>
-                    <td style={{ ...S.td, fontWeight:500 }}>{so.matName || mat?.name || '-'}</td>
-                    <td style={{ ...S.td, color:'var(--st-red-fg)', fontWeight:600 }}>-{outQty(so.qty)} {mat?.unit ?? 'pcs'}</td>
-                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px' }}>₱{so.unitCost.toFixed(2)}</td>
-                    <td style={{ ...S.td }}><ReasonBadge reason={so.reason} /></td>
-                    <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{so.notes || '-'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {manualCount > 0 && <ManualAdjustments manual={manual} matMap={matMap} />}
+    </div>
+  );
+}
+
+// Stock-outs with no order behind them. It was one long unpaged list under the orders table; it now
+// has the same search, date range and paging as the table above, plus a filter by type.
+function ManualAdjustments({ manual, matMap }) {
+  const [search, setSearch] = useState('');
+  const [type,   setType]   = useState('All');
+  const [range,  setRange]  = useState('all');
+  const [from,   setFrom]   = useState('');
+  const [to,     setTo]     = useState('');
+
+  const sorted = useMemo(() => [...manual].sort((a, b) => new Date(b.date) - new Date(a.date)), [manual]);
+  const types  = useMemo(() => ['All', ...Array.from(new Set(sorted.map(so => reasonLabel(so.reason))))], [sorted]);
+  const q = search.trim().toLowerCase();
+  const filtered = sorted.filter(so => {
+    if (!inDateRange(so.date, range, from, to)) return false;
+    if (type !== 'All' && reasonLabel(so.reason) !== type) return false;
+    if (!q) return true;
+    const name = (so.matName || matMap[so.matId]?.name || '').toLowerCase();
+    return name.includes(q) || (so.notes || '').toLowerCase().includes(q);
+  });
+  const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+
+  return (
+    <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
+      <div style={{ ...S.th, padding:'12px 16px', fontSize:'12px', letterSpacing:'.5px' }}>
+        Manual / Adjustments - {manual.length} record{manual.length !== 1 ? 's' : ''}
+      </div>
+      <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center', padding:'12px 16px', borderBottom:'1px solid var(--border)' }}>
+        <SearchBar value={search} onChange={setSearch} placeholder="Search material or remarks…" style={{ width:'260px' }} />
+        <CustomSelect value={type} onChange={setType} options={types.map(t => ({ value: t, label: t === 'All' ? 'All types' : t }))} style={{ width:'150px' }} />
+        <DateRangeFilter range={range} setRange={setRange} from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        <span style={{ fontSize:'12px', color:'var(--gray)', marginLeft:'auto' }}>{total} record{total !== 1 ? 's' : ''}</span>
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead>
+            <tr>
+              {['Date','Material','Qty','Unit Cost','Type','Remarks'].map((h, i) => (
+                <th key={i} style={{ ...S.th }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {total === 0 ? (
+              <tr><td colSpan={6}><EmptyState message="Nothing matches" sub="Try another type or date range." /></td></tr>
+            ) : slice.map((so, i) => {
+              const mat = matMap[so.matId];
+              return (
+                <tr key={so.id ?? i}
+                  style={{ ...S.tr }}
+                  onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'}
+                  onMouseLeave={e => e.currentTarget.style.background=''}
+                >
+                  <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', whiteSpace:'nowrap' }}>{so.date}</td>
+                  <td style={{ ...S.td, fontWeight:500 }}>{so.matName || mat?.name || '-'}</td>
+                  <td style={{ ...S.td, color:'var(--st-red-fg)', fontWeight:600 }}>-{outQty(so.qty)} {mat?.unit ?? 'pcs'}</td>
+                  <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px' }}>₱{so.unitCost.toFixed(2)}</td>
+                  <td style={{ ...S.td }}><ReasonBadge reason={so.reason} /></td>
+                  <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={so.notes || ''}>{so.notes || '-'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {total > 0 && (
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
+          <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       )}
     </div>
