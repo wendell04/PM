@@ -117,8 +117,11 @@ export default function ProofPage({ params }) {
 
     <div className="pf-proofs">
       {(data.proofs || []).map((u, i) => (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img key={i} src={u} alt={`Proof ${i + 1}`} className="pf-img" />
+        // A video proof was drawn as an <img> and showed nothing.
+        /\.(mp4|webm|mov|m4v)(\?|$)|\/video\/upload\//i.test(u)
+          ? <video key={i} src={u} className="pf-img" controls playsInline preload="metadata" />
+          /* eslint-disable-next-line @next/next/no-img-element */
+          : <img key={i} src={u} alt={`Proof ${i + 1}`} className="pf-img" />
       ))}
       {(data.proofs || []).length === 0 && (
         <p className="pf-lede">The proof did not load. Open the order in My Orders to see it.</p>

@@ -38,21 +38,25 @@
                   <tr>
                     @foreach ($proofs as $p)
                       <td style="padding-right:8px;">
-                        @if ($orderUrl)<a href="{{ $orderUrl }}" style="text-decoration:none;">@endif
+                        {{-- The preview opens the same no-sign-in page as the button, where the proof is
+                             shown full size (and a video plays). It used to open My Orders, which needs
+                             the right account signed in and showed "Order not found" otherwise. --}}
+                        @php($previewUrl = !empty($approveUrl) ? $approveUrl : $orderUrl)
+                        @if ($previewUrl)<a href="{{ $previewUrl }}" style="text-decoration:none;">@endif
                         <img src="{{ $p }}" alt="Proof" width="150"
                           style="display:block;width:150px;border-radius:8px;border:1px solid rgba(0,0,0,0.08);">
-                        @if ($orderUrl)</a>@endif
+                        @if ($previewUrl)</a>@endif
                       </td>
                     @endforeach
                   </tr>
                 </table>
                 <p style="margin:0 0 18px;font-size:12px;color: #6b6b6b;line-height:1.6;">
                   These previews are watermarked. The printed piece is not.
-                  @if ($hasVideo && $orderUrl)
+                  @if ($hasVideo && (!empty($approveUrl) || $orderUrl))
                     This proof is a video - the watermarked clip is attached, or tap the preview to
-                    play it in your order.
-                  @elseif ($orderUrl)
-                    Tap the preview to open your order.
+                    play it.
+                  @elseif (!empty($approveUrl) || $orderUrl)
+                    Tap the preview to see it full size.
                   @endif
                 </p>
               @endif

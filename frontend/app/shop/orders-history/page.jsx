@@ -820,7 +820,12 @@ export default function OrdersHistoryPage() {
       setSelectedOrder(detail);
       if (detail?.orderStatus?.toLowerCase() === 'delivered' && detail?.paymentStatus === 'paid') loadOrderReview(detail._id ?? detail.id ?? order._id ?? order.id);
     } catch (err) {
-      setDetailError(err.message || 'Failed to load order details.');
+      // A link from an email opens here with whoever is signed in on that browser. "Order not found"
+      // read as a lost order; the usual cause is a different account.
+      const notMine = /not found|404/i.test(err.message || '');
+      setDetailError(notMine
+        ? `This order is not on the account you are signed in with${currentUser?.email ? ` (${currentUser.email})` : ''}. Sign in with the email the message was sent to.`
+        : (err.message || 'Failed to load order details.'));
     } finally { setDetailLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -1453,7 +1458,9 @@ export default function OrdersHistoryPage() {
                         FROM QUOTATION
                       </span>
                     )}
-                    {selectedOrder.isCustomOrder ? (
+                    {/* Only once the order has loaded: a deep link opens with just an id, and the
+                        guess from that said READY-MADE over a custom order. */}
+                    {!detailLoading && !detailError && (selectedOrder.isCustomOrder ? (
                       <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '3px 10px', borderRadius: '999px', letterSpacing: '0.03em', background: 'rgba(212,168,67,0.08)', color: '#d4a843', border: '1px solid rgba(212,168,67,0.2)' }}>
                         CUSTOM · {customTypeLabel(selectedOrder).toUpperCase()}
                       </span>
@@ -1461,11 +1468,11 @@ export default function OrdersHistoryPage() {
                       <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '3px 10px', borderRadius: '999px', letterSpacing: '0.03em', background: 'rgba(34,197,94,0.08)', color: '#16a34a', border: '1px solid rgba(34,197,94,0.25)' }}>
                         READY-MADE
                       </span>
-                    )}
-                    <StatusBadge status={selectedOrder.orderStatus} />
-                    {selectedOrder.paymentStatus === 'paid'
+                    ))}
+                    {!detailLoading && !detailError && <StatusBadge status={selectedOrder.orderStatus} />}
+                    {!detailLoading && !detailError && (selectedOrder.paymentStatus === 'paid'
                       ? <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', background: 'rgba(34,197,94,0.1)', color: '#16a34a', border: '1px solid rgba(34,197,94,0.25)' }}>Paid</span>
-                      : <PaymentStatusBadge status={selectedOrder.paymentStatus} />}
+                      : <PaymentStatusBadge status={selectedOrder.paymentStatus} />)}
                   </div>
                 )}
               </div>
