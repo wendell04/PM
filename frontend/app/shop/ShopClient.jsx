@@ -47,6 +47,11 @@ function getDisplayPrice(product) {
   return r ? rangeText(r) : 'Price on request';
 }
 
+// When a flash sale ends, in shop time.
+const saleEndText = (end) => new Date(end).toLocaleString('en-PH', {
+  timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+});
+
 const saleOff = (price, sale) => Math.max(0, sale.discountType === 'percentage'
   ? price * (1 - sale.discountValue / 100)
   : price - sale.discountValue);
@@ -146,6 +151,7 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
   // The sale as it applies to the variant chosen: one that names variants covers only those, the
   // same rule the server prices the line by.
   const flashSale = saleCovers(anySale, comboId) ? anySale : null;
+  const quoteAbove = Number(product?.quoteAboveQty) > 0 ? Number(product.quoteAboveQty) : null;
 
 
   const unitPrice = (() => {
@@ -190,9 +196,13 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
     return null;
   })();
 
-  const effectiveUnit = flashSale && unitPrice ? Math.max(0,
-    flashSale.discountType === 'percentage' ? unitPrice * (1 - flashSale.discountValue / 100) : unitPrice - flashSale.discountValue
-  ) : unitPrice;
+  // What one piece costs with the options chosen. The sale comes off the band price and the options
+  // go on top - the order the server prices it in. The headline used to leave the options out
+  // entirely: P30 in here with Kisscut picked, P35 on the product page.
+  const saleBand    = flashSale && unitPrice ? saleOff(unitPrice, flashSale) : unitPrice;
+  const regularUnit = unitPrice != null ? unitPrice + optUnitAdd : null;
+  const lineUnit    = unitPrice != null ? saleBand + optUnitAdd : null;
+  const lineTotal   = lineUnit != null ? lineUnit * qty + optOrderAdd : null;
 
   const isOOS = (() => {
     // Price-on-request items are quoted, not stocked - the same rule as the card and the product
@@ -267,12 +277,10 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
       ? (combo.label || combo.name || Object.values(selVars).join(', ') || null)
       : (Object.values(selVars).filter(Boolean).join(', ') || null);
     const variantLabel = withOptionSuffix(baseLabel, product, selOpts);
-    const basePrice = ((comboId && product.variantPrices?.[comboId])
+    const bandPrice = (comboId && product.variantPrices?.[comboId])
       ? parseFloat(product.variantPrices[comboId])
-      : parseFloat(product.flatPrice || product.price || 0)) + optUnitAdd;
-    const effectivePrice = flashSale ? Math.max(0, flashSale.discountType === 'percentage'
-      ? basePrice * (1 - flashSale.discountValue / 100)
-      : basePrice - flashSale.discountValue) : basePrice;
+      : parseFloat(product.flatPrice || product.price || 0);
+    const effectivePrice = (flashSale ? saleOff(bandPrice, flashSale) : bandPrice) + optUnitAdd;
     const variantImg = comboId ? (product.variantImageUrls ?? {})[comboId] : null;
     const productForCart = {
       ...product,
@@ -433,19 +441,58 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
             <div className="shop-qv-price">
               {mode === 'inquiry' ? (
                 <span className="shop-qv-price-main">Price upon inquiry</span>
-              ) : flashSale && effectiveUnit != null ? (
-                <>
-                  <span className="shop-qv-price-main">{fmt(effectiveUnit)}</span>
-                  <span className="shop-qv-price-orig">{fmt(unitPrice)}</span>
-                  {mode === 'tiered' && <span style={{ fontSize: '0.78rem', color: '#888' }}> / pc</span>}
-                </>
-              ) : unitPrice != null ? (
+              ) : lineUnit != null ? (
+                // Same as the product page: the price with the options in it, the sale named with
+                // when it ends, and the total.
                 <>
                   <span className="shop-qv-price-main">
-                    {fmt(unitPrice)}{mode === 'tiered' && <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#888' }}> / pc</span>}
+                    {fmt(lineUnit)}{mode === 'tiered' && <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#888' }}> / pc</span>}
                   </span>
-                  {qty > 1 && mode !== 'inquiry' && (
-                    <span style={{ fontSize: '0.82rem', color: '#888' }}>Total: <b style={{ color: '#D4A843' }}>{fmt(unitPrice * qty)}</b></span>
+                  {flashSale && <span className="shop-qv-price-orig">{fmt(regularUnit)}</span>}
+                  {flashSale && (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: 'var(--red, #dc2626)', padding: '2px 7px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.04em', alignSelf: 'center' }}>Flash sale</span>
+                  )}
+                  {qty > 1 && (
+                    <span style={{ fontSize: '0.82rem', color: '#888' }}>Total: <b style={{ color: '#D4A843' }}>{fmt(lineTotal)}</b></span>
+                  )}
+                  {flashSale?.endDate && (
+                    <span style={{ flexBasis: '100%', fontSize: '0.78rem', fontWeight: 600, color: 'var(--red, #dc2626)' }}>
+                      Sale price until {saleEndText(flashSale.endDate)}
+                    </span>
+                  )}
+                  {/* Where the number came from, once an option adds something - the product page's
+                      breakdown, line for line. */}
+                  {chosenOpts.some(o => o.priceAdd > 0) && (
+                    <div style={{ flexBasis: '100%', marginTop: '6px', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '10px', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: '#888' }}>
+                        <span>Base price</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(saleBand)} / pc</span>
+                      </div>
+                      {chosenOpts.filter(o => o.priceAdd > 0 && o.priceMode !== 'order').map((o, i) => (
+                        <div key={'u' + i} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: '#888' }}>
+                          <span>{o.label}</span>
+                          <span style={{ fontVariantNumeric: 'tabular-nums' }}>+{fmt(o.priceAdd)} / pc</span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', paddingTop: '5px', borderTop: '1px solid var(--border)', fontWeight: 700 }}>
+                        <span>Unit price</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(lineUnit)} / pc</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: '#888' }}>
+                        <span>&times; {qty} pcs</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(lineUnit * qty)}</span>
+                      </div>
+                      {chosenOpts.filter(o => o.priceAdd > 0 && o.priceMode === 'order').map((o, i) => (
+                        <div key={'o' + i} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: '#888' }}>
+                          <span>{o.label}</span>
+                          <span style={{ fontVariantNumeric: 'tabular-nums' }}>+{fmt(o.priceAdd)}<span style={{ opacity: 0.7, fontWeight: 400 }}> once</span></span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', paddingTop: '5px', borderTop: '1px solid var(--border)', fontWeight: 700, color: '#D4A843' }}>
+                        <span>Total</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(lineTotal)}</span>
+                      </div>
+                    </div>
                   )}
                 </>
               ) : priceRange ? (
@@ -570,6 +617,8 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
               <>
                 {cantBuy ? (
                   <button className="shop-qv-btn-cart" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>Out of Stock</button>
+                ) : optsPending ? (
+                  <button className="shop-qv-btn-cart" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>{optsPrompt} to continue</button>
                 ) : <Link
                   href={(() => {
                     const qs = new URLSearchParams({ qty: String(qty) });
@@ -605,10 +654,16 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
                  carries them across exactly as the PDP's own button does. */
               cantBuy ? (
                 <button className="shop-qv-btn-cart" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>Out of Stock</button>
+              ) : optsPending ? (
+                // The product page stops here until every option is answered; this link went through
+                // with Cut Type unchosen, and the order form had to guess.
+                <button className="shop-qv-btn-cart" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>{optsPrompt} to continue</button>
               ) : <Link
                 href={(() => {
                   const qs = new URLSearchParams({ qty: String(qty) });
                   Object.entries(selVars || {}).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, String(v)); });
+                  // The chosen option travels too, as it does from the product page.
+                  Object.entries(selOpts || {}).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, String(v)); });
                   return `/shop/products/${product.slug || toSlug(product.name)}/order?${qs.toString()}`;
                 })()}
                 className="shop-qv-btn-cart"
@@ -651,7 +706,11 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '6px 14px', background: 'var(--dark2)', fontSize: '0.65rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                           <span>Quantity</span><span style={{ textAlign: 'right' }}>Unit Price</span>
                         </div>
-                        {[...getTiers()].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0)).map((tier, i, arr) => {
+                        {/* Past "Ask for a quote above" the bands are not an offer, the same cut the product
+                            page makes; the band that straddles the ceiling is shown ending there. */}
+                        {[...getTiers()].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0))
+                          .filter(t => quoteAbove == null || (parseInt(t.minQty) || 0) <= quoteAbove)
+                          .map((tier, i, arr) => {
                           const isLast = i === arr.length - 1;
                           const min = parseInt(tier.minQty) || 0;
                           const max = tier.maxQty != null && tier.maxQty !== '' ? parseInt(tier.maxQty) : Infinity;
@@ -666,15 +725,33 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
                           return (
                             <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '9px 14px', borderTop: '1px solid var(--border)', background: isActive ? 'rgba(212,168,67,0.07)' : 'var(--dark)' }}>
                               <span style={{ fontSize: '0.82rem', color: isActive ? '#b8922f' : '#333', fontWeight: isActive ? 700 : 500, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                {`${tier.minQty}${tier.maxQty ? `-${tier.maxQty}` : '+'} pcs`}
+                                {(() => {
+                                  const tMax = tier.maxQty ? parseInt(tier.maxQty) : null;
+                                  if (quoteAbove != null && (tMax === null || tMax > quoteAbove)) return `${tier.minQty}-${quoteAbove} pcs`;
+                                  return `${tier.minQty}${tier.maxQty ? `-${tier.maxQty}` : '+'} pcs`;
+                                })()}
                                 {isActive && <span style={{ fontSize: '0.6rem', background: 'rgba(212,168,67,0.15)', color: '#b8922f', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase' }}>Your qty</span>}
                               </span>
                               <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isActive ? '#b8922f' : '#333', textAlign: 'right' }}>
-                                {tierPrice ? `${fmt(tierPrice)} / pc` : '-'}
+                                {!tierPrice ? '-' : flashSale ? (
+                                  <>
+                                    <span style={{ textDecoration: 'line-through', color: '#999', fontWeight: 400, fontSize: '0.76rem', marginRight: '6px' }}>{fmt(tierPrice)}</span>
+                                    {fmt(saleOff(tierPrice, flashSale))} / pc
+                                  </>
+                                ) : `${fmt(tierPrice)} / pc`}
                               </span>
                             </div>
                           );
                         })}
+                        {quoteAbove != null && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '9px 14px', borderTop: '1px solid var(--border)', background: 'var(--dark)' }}>
+                            <span style={{ fontSize: '0.82rem', color: '#333', fontWeight: 500 }}>{quoteAbove + 1}+ pcs</span>
+                            <Link href={`/shop/products/${product.slug || toSlug(product.name)}?inquire=1`} onClick={onClose}
+                              style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b8922f', textAlign: 'right', textDecoration: 'underline' }}>
+                              Ask for a quote
+                            </Link>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
