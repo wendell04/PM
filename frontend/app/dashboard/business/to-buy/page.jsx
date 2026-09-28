@@ -86,6 +86,10 @@ export default function ToBuyPage() {
   const { can, owner } = useAccess();
   const { token } = useAuth();
   const [rows, setRows]       = useState([]);
+  // In use by default. A material nothing sells yet (a draft card, one added ahead of a launch) is
+  // listed apart and kept out of the totals - see InventoryController::toBuy.
+  const [show, setShow]       = useState('inUse');
+  const [notSelling, setNotSelling] = useState({ items: 0, cost: 0 });
   const [totals, setTotals]   = useState({ totalItems: 0, estimatedCost: 0 });
   // A finished good bought in and resold has no BOM, so it never produced a material line and
   // this page said nothing about it. It is a different question - buy the thing, not what it is
@@ -175,6 +179,7 @@ export default function ToBuyPage() {
       const data = d?.data ?? d;
       setRows(Array.isArray(data?.items) ? data.items : []);
       setTotals({ totalItems: data?.totalItems ?? 0, estimatedCost: data?.estimatedCost ?? 0 });
+      setNotSelling({ items: data?.notSellingItems ?? 0, cost: data?.notSellingCost ?? 0 });
       setProductRows(Array.isArray(data?.products) ? data.products : []);
       setWaitingQuotes(Array.isArray(data?.waitingQuotes) ? data.waitingQuotes : []);
     } catch {
@@ -186,17 +191,22 @@ export default function ToBuyPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // An older server sends no inUse flag; such a row counts as in use.
+  const scoped = useMemo(() => rows.filter(r =>
+    show === 'all' || (show === 'inUse' ? r.inUse !== false : r.inUse === false)), [rows, show]);
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter(r =>
+    return scoped.filter(r =>
       (reason === 'all' || (r.reasons ?? ['orders']).includes(reason)) &&
       (!q || (r.name || '').toLowerCase().includes(q) ||
         (r.sku || '').toLowerCase().includes(q) ||
         (r.supplierName || '').toLowerCase().includes(q)));
-  }, [rows, search, reason]);
+  }, [scoped, search, reason]);
   // The "no recipe" tab is hidden while it is empty, so a link that opens on it goes back to materials.
   useEffect(() => { if (!loading && productRows.length === 0 && tab === 'products') setTab('materials'); }, [loading, productRows.length, tab]);
-  const countFor = (why) => rows.filter(r => (r.reasons ?? ['orders']).includes(why)).length;
+  const countFor = (why) => scoped.filter(r => (r.reasons ?? ['orders']).includes(why)).length;
+  const inUseCount = rows.filter(r => r.inUse !== false).length;
+  const notSellingCount = rows.length - inUseCount;
 
   // One group per supplier - the unit of work is "message this supplier", not "buy this item".
   const groups = useMemo(() => {
@@ -351,15 +361,42 @@ export default function ToBuyPage() {
           <div style={{ flex: '0 1 230px', minWidth: 180 }}>
             <CustomSelect value={reason} onChange={setReason}
               options={[
-                { value: 'all', label: `All reasons (${rows.length})` },
+                { value: 'all', label: `All reasons (${scoped.length})` },
                 { value: 'orders', label: `Short for orders (${countFor('orders')})` },
                 { value: 'minimum', label: `Below minimum (${countFor('minimum')})` },
                 { value: 'forecast', label: `Forecast says reorder (${countFor('forecast')})` },
               ]} />
           </div>
         )}
+        {tab === 'materials' && notSellingCount > 0 && (
+          <div style={{ flex: '0 1 220px', minWidth: 170 }}>
+            <CustomSelect value={show} onChange={setShow}
+              options={[
+                { value: 'inUse', label: `In use (${inUseCount})` },
+                { value: 'notSelling', label: `Not selling yet (${notSellingCount})` },
+                { value: 'all', label: `All materials (${rows.length})` },
+              ]} />
+          </div>
+        )}
         <button type="button" onClick={load} style={{ ...S.btnGhost, marginLeft: 'auto' }}>Refresh</button>
       </div>
+
+      {tab === 'materials' && !loading && notSellingCount > 0 && show !== 'all' && (
+        <div style={{ fontSize: '12px', color: 'var(--gray)', margin: '-6px 0 14px', lineHeight: 1.5 }}>
+          {show === 'inUse' ? (
+            <>
+              {notSellingCount} material{notSellingCount === 1 ? '' : 's'} below minimum {notSellingCount === 1 ? 'is' : 'are'} not selling yet
+              {notSelling.cost > 0 ? ` (${peso(notSelling.cost)})` : ''} and not counted above.{' '}
+              <button type="button" onClick={() => setShow('notSelling')}
+                style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontWeight: 700, cursor: 'pointer', font: 'inherit' }}>
+                Show them
+              </button>
+            </>
+          ) : (
+            <>No published product uses these and they have never been stocked, so they are kept out of the totals. Buy them when you are ready to launch - publishing the card or the first Stock In moves them to In use.</>
+          )}
+        </div>
+      )}
 
       {error && (
         <div style={{ ...S.card, borderColor: 'var(--st-red-fg)', color: '#e05252', fontSize: '13px' }}>
@@ -462,7 +499,7 @@ export default function ToBuyPage() {
                 <LevelBar have={Math.max(0, Number(r.onHand) - Number(r.needed || 0))} min={r.minimum} uom={r.uom} width={90} />
                 <span>{`Buy ${num(r.shortfall)} = ${breakdown(r)}`}</span>
               </span>}
-              sub={[`have ${num(r.onHand)}${r.minimum > 0 ? ` · min ${num(r.minimum)}` : ''} ${r.uom} · ${peso(r.estimatedCost)}`, r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null,
+              sub={[r.inUse === false ? 'not selling yet' : null, `have ${num(r.onHand)}${r.minimum > 0 ? ` · min ${num(r.minimum)}` : ''} ${r.uom} · ${peso(r.estimatedCost)}`, r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null,
                 r.blocks?.length > 0 ? `holding back ${r.blocks.map(b => `${b.product} (${b.canShip}/${b.canBuild})`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
             <div style={{ padding: '0 14px 10px' }}><MinEditor r={r} compact /></div>
             </div>
@@ -493,6 +530,11 @@ export default function ToBuyPage() {
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '14px', fontWeight: 700 }}>{r.name}</span>
+                  {r.inUse === false && (
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--st-gray-bg)', color: 'var(--st-gray-fg)' }}>
+                      Not selling yet
+                    </span>
+                  )}
                   {reasons.map(w => (
                     <span key={w} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
                       background: `var(--st-${w === 'orders' ? 'orange' : w === 'forecast' ? 'purple' : 'blue'}-bg)`,
@@ -517,6 +559,13 @@ export default function ToBuyPage() {
                         {fc.lowConfidence ? ' (thin history, treat as a guide)' : ''}
                       </span>
                     )}
+                  </div>
+                )}
+                {r.inUse === false && (
+                  <div style={{ fontSize: '11.5px', color: 'var(--gray)', marginTop: 2 }}>
+                    {r.usedBy?.length
+                      ? <>In the recipe of {r.usedBy.map(u => `${u.product} (${u.published ? 'Published' : 'Draft'})`).join(', ')}</>
+                      : 'Not in any product recipe yet'}
                   </div>
                 )}
                 {!Number(r.unitCost) && (

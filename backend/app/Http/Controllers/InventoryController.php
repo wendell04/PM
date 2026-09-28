@@ -195,6 +195,44 @@ class InventoryController extends Controller
                 Log::warning('toBuy: blocking-products scan failed', ['error' => $e->getMessage()]);
             }
 
+            // Is the material in use? A minimum on something nothing sells yet (a draft card, a material
+            // added in Master Data ahead of a launch) put it on the list the moment it was created, and
+            // its cost into the total. In use means any of: an order needs it (the 'orders' reason), a
+            // PUBLISHED card's recipe uses it, it has ever moved in stock (received, used - this covers
+            // T-shirts, which have no card of their own but are stocked and used for quotes and POS),
+            // or it has recent usage. Anything else is listed apart, as "not selling yet".
+            $usedBy = [];   // inventoryId => [productName => published?]
+            try {
+                $bomParts = [];
+                foreach (\App\Models\BillOfMaterial::where('isActive', true)->get() as $b) {
+                    $bomParts[(string) $b->_id] = array_values(array_filter(array_map(
+                        fn ($c) => (string) ($c['inventoryId'] ?? ''), (array) ($b->components ?? [])
+                    )));
+                }
+                foreach (\App\Models\Product::where('isArchived', '!=', true)->get() as $prod) {
+                    $bomIds = array_filter(array_merge(
+                        array_map(fn ($c) => (string) ($c['bomId'] ?? ''), (array) ($prod->combinations ?? [])),
+                        [(string) ($prod->bomId ?? '')]
+                    ));
+                    $published = (bool) ($prod->isPublished ?? false);
+                    foreach (array_unique($bomIds) as $bid) {
+                        foreach ($bomParts[$bid] ?? [] as $partId) {
+                            $usedBy[$partId][$prod->name] = ($usedBy[$partId][$prod->name] ?? false) || $published;
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('toBuy: used-by scan failed', ['error' => $e->getMessage()]);
+            }
+            $everMoved = [];
+            try {
+                foreach (\Illuminate\Support\Facades\DB::connection('mongodb')->getCollection('stock_history')->distinct('inventoryId') as $mid) {
+                    $everMoved[(string) $mid] = true;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('toBuy: stock history scan failed', ['error' => $e->getMessage()]);
+            }
+
             $rows = [];
             $usage = \App\Support\MaterialUsage::perDay();
             $candidates = Inventory::where('isActive', '!=', false)->get()->keyBy(fn ($i) => (string) $i->_id);
@@ -240,8 +278,22 @@ class InventoryController extends Controller
                     (int) ($inv->leadTimeDays ?? 0) ?: null,
                 );
 
+                $onPublishedCard = in_array(true, $usedBy[$invId] ?? [], true);
+                $inUse = in_array('orders', $reasons, true)
+                    || $onPublishedCard
+                    || isset($everMoved[$invId])
+                    || (float) ($usage[$invId] ?? 0) > 0
+                    || $onHand > 0;
+
                 $rows[] = $cover + [
                     'reasons'       => $reasons,
+                    'inUse'         => $inUse,
+                    // The cards whose recipe uses it, and whether each is published - so a row can say
+                    // "Canvas Totebag W/Zipper (Draft)" rather than leave the reader to guess why.
+                    'usedBy'        => array_slice(array_map(
+                        fn ($n, $pub) => ['product' => $n, 'published' => (bool) $pub],
+                        array_keys($usedBy[$invId] ?? []), array_values($usedBy[$invId] ?? [])
+                    ), 0, 6),
                     'minimum'       => $minimum,
                     'inventoryId'   => (string) $inv->_id,
                     'name'          => $inv->name,
@@ -344,11 +396,17 @@ class InventoryController extends Controller
                 ];
             }
 
+            // Totals (and Home's "materials to buy") count what is in use; the rest is reported apart.
+            $inUseRows      = array_values(array_filter($rows, fn ($r) => $r['inUse']));
+            $notSellingRows = array_values(array_filter($rows, fn ($r) => !$r['inUse']));
+
             return $this->successResponse('Purchase requirements fetched successfully.', [
                 'waitingQuotes' => $waitingQuotes,
                 'items'         => $rows,
-                'totalItems'    => count($rows),
-                'estimatedCost' => round(array_sum(array_column($rows, 'estimatedCost')), 2),
+                'totalItems'    => count($inUseRows),
+                'estimatedCost' => round(array_sum(array_column($inUseRows, 'estimatedCost')), 2),
+                'notSellingItems' => count($notSellingRows),
+                'notSellingCost'  => round(array_sum(array_column($notSellingRows, 'estimatedCost')), 2),
                 'products'      => $productRows,
                 'totalProducts' => count($productRows),
                 'productsCost'  => round(array_sum(array_column($productRows, 'estimatedCost')), 2),
