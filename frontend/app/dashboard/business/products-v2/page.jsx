@@ -47,6 +47,11 @@ export default function ProductsV2() {
     setMaterials(mats);
   }, [token]);
 
+  const reloadCollections = useCallback(async () => {
+    if (!token) return;
+    try { const { cols } = await loadProductsAndCollections(token); setCollections(cols); } catch { /* keep the list shown */ }
+  }, [token]);
+
   useEffect(() => {
     if (!token) return;
     setLoading(true);
@@ -390,6 +395,7 @@ export default function ProductsV2() {
           batches={batches}
           materials={materials}
           collections={collections}
+          onReloadCollections={reloadCollections}
           existingImages={existingImages}
           onSave={handleSave}
           onCancel={closeForm}

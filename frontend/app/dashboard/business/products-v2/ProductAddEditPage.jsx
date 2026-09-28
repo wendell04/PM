@@ -332,7 +332,16 @@ function validate(form) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ProductAddEditPage({ product, boms, batches = [], materials = [], collections, existingImages = [], onSave, onCancel }) {
+export default function ProductAddEditPage({ product, boms, batches = [], materials = [], collections, existingImages = [], onSave, onCancel, onReloadCollections }) {
+  // Manage Collections opens in its own tab so this unsaved form survives. Coming back re-reads the
+  // list, so a collection made there can be ticked here straight away.
+  useEffect(() => {
+    if (!onReloadCollections) return;
+    const onVisible = () => { if (document.visibilityState === 'visible') onReloadCollections(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [onReloadCollections]);
+
   const { token } = useAuth();
 
   // ── Form state ──────────────────────────────────────────────────────────────
@@ -867,10 +876,12 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
       {/* Page content */}
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 24px 0' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '20px', alignItems: 'start' }}>
+        {/* minmax(0,1fr), not 1fr: a bare 1fr never shrinks below its content, so at a 1280 screen the
+            left column pushed the settings column off the right edge and the page scrolled sideways. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '20px', alignItems: 'start' }}>
 
           {/* ───────── LEFT ───────── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
 
             {/* Basic Info */}
             <Card>
@@ -909,14 +920,17 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                         )}
                       </div>
                       <button onClick={() => removeImage(i)}
-                        style={{ position: 'absolute', top: '-8px', right: '-8px', width: '20px', height: '20px',
+                        aria-label="Remove image"
+                        style={{ position: 'absolute', top: '4px', right: '4px', width: '20px', height: '20px',
                           borderRadius: '50%', background: 'var(--white)', border: '1.5px solid var(--border)', cursor: 'pointer',
                           color: 'var(--dark)', fontSize: '11px', display: 'flex', alignItems: 'center',
                           justifyContent: 'center', lineHeight: 1, zIndex: 2 }}>
                         ×
                       </button>
                       <button title="Adjust crop" onClick={() => setProdCrop({ src: url, target: 'product', replaceIndex: i })}
-                        style={{ position: 'absolute', top: '-8px', left: '-8px', height: '20px', padding: '0 8px',
+                        /* Inside the tile's corners. Hanging 8px outside, the Edit chip of one image sat on
+                           the remove button of the image before it, 8px away. */
+                        style={{ position: 'absolute', top: '4px', left: '4px', height: '20px', padding: '0 8px',
                           borderRadius: '10px', background: 'var(--white)', border: '1.5px solid var(--border)', cursor: 'pointer',
                           color: 'var(--dark)', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center',
                           justifyContent: 'center', lineHeight: 1, zIndex: 2 }}>
@@ -1525,9 +1539,15 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                   ))}
                 </div>
               )}
-              <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>
+              {/* Was a styled div with nothing behind it. */}
+              <a href="/dashboard/business/collections" target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '10px', fontSize: '12px', color: 'var(--gold)', fontWeight: 600, textDecoration: 'none', padding: '4px 0' }}
+                title="Opens in a new tab - this product stays as you left it">
                 Manage Collections
-              </div>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M14 3h7v7" /><path d="M10 14 21 3" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+                </svg>
+              </a>
             </Card>
 
             <Card>
