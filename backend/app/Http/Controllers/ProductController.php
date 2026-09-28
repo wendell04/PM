@@ -911,6 +911,12 @@ class ProductController extends Controller
                 $validated['requiresDownpayment'] = false;
                 $validated['downpaymentPercent']  = 0;
             }
+            // A customizable or quoted product is made after the order by definition; the editor says
+            // "Made to Order - always on here". Written down so the flag agrees with it: products saved
+            // before that rule kept MTO off and the catalogue badge said so.
+            if ($willBeCustom || ($validated['priceType'] ?? $product->priceType ?? null) === 'inquiry') {
+                $validated['isMadeToOrder'] = true;
+            }
 
             $validated['updatedAt'] = now();
 
@@ -1091,6 +1097,13 @@ class ProductController extends Controller
                         $validated['stockStatus'] = 'in-stock';
                     }
                 }
+            }
+
+            // Same rule as store(): customizable or quoted means made to order.
+            $customAfter = array_key_exists('isCustom', $validated) ? (bool) $validated['isCustom'] : (bool) ($product->isCustom ?? false);
+            $typeAfter   = $validated['priceType'] ?? $product->priceType ?? null;
+            if ($customAfter || $typeAfter === 'inquiry') {
+                $validated['isMadeToOrder'] = true;
             }
 
             $validated['updatedAt'] = now();

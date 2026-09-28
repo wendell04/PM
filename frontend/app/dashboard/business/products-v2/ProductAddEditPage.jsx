@@ -770,7 +770,9 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       variantImages,
       type: f.type, pricingMode: f.pricingMode,
       collectionIds: f.collectionIds,
-      isCustomizable: f.isCustomizable, allowCOD: f.allowCOD, isMadeToOrder: f.isMadeToOrder,
+      isCustomizable: f.isCustomizable, allowCOD: f.allowCOD,
+      // "Always on here" for customizable and quoted products - saved that way, not only shown.
+      isMadeToOrder: f.isMadeToOrder || f.isCustomizable || f.pricingMode === 'inquiry',
       allowPreorder: f.allowPreorder,
       // Both names, because the API has historically read `isCustom` while this form has spoken
       // `isCustomizable`.

@@ -571,7 +571,7 @@ export default function ProductsV2() {
                   <td style={S.td}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                       {p.isCustomizable && <span style={{ fontSize: '10px', background: '#fdf3e0', color: 'var(--gold)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>Custom</span>}
-                      {p.isMadeToOrder  && <span style={{ fontSize: '10px', background: 'var(--dark2)', color: 'var(--gray-light)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>MTO</span>}
+                      {(p.isMadeToOrder || p.isCustomizable || p.pricingMode === 'inquiry') && <span style={{ fontSize: '10px', background: 'var(--dark2)', color: 'var(--gray-light)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>MTO</span>}
                       {p.allowCOD       && <span style={{ fontSize: '10px', background: 'var(--st-green-bg)', color: 'var(--st-green-fg)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>COD</span>}
                       {!p.allowCOD      && <span style={{ fontSize: '10px', background: 'var(--st-red-bg)', color: '#dc2626', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>Online</span>}
                       {p.downpaymentPct > 0 && <span style={{ fontSize: '10px', background: '#fff8e1', color:'var(--st-orange-fg)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>{p.downpaymentPct}% DP</span>}
