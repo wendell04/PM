@@ -189,6 +189,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
   const [search,      setSearch]     = useState('');
   const [catFilter,   setCat]        = useState('All');
   const [statusFilter,setStatus]     = useState('All');
+  const [sortBy,      setSortBy]     = useState('default');
   const [reduceTarget,setReduceTarget]= useState(null); // material
 
   const categories = useMemo(() => ['All', ...new Set(materials.map(m => m.category))], [materials]);
@@ -221,8 +222,28 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
       const q = search.toLowerCase();
       list = list.filter(d => d.mat.name.toLowerCase().includes(q) || d.mat.sku?.toLowerCase().includes(q));
     }
-    return list;
-  }, [stockData, catFilter, statusFilter, search]);
+    // Sorted on a copy after filtering, so the page and the totals read the same rows.
+    const by = {
+      value_desc: (a, b) => b.stockValue - a.stockValue,
+      value_asc:  (a, b) => a.stockValue - b.stockValue,
+      qty_desc:   (a, b) => b.actualQty - a.actualQty,
+      qty_asc:    (a, b) => a.actualQty - b.actualQty,
+      name:       (a, b) => a.mat.name.localeCompare(b.mat.name),
+    }[sortBy];
+    return by ? [...list].sort(by) : list;
+  }, [stockData, catFilter, statusFilter, search, sortBy]);
+
+  // Value sorts only for those who may see money - the same rule as the Value column.
+  const sortOptions = [
+    { value: 'default', label: 'Sort: default' },
+    ...(seeMoney ? [
+      { value: 'value_desc', label: 'Value: highest first' },
+      { value: 'value_asc',  label: 'Value: lowest first' },
+    ] : []),
+    { value: 'qty_desc', label: 'On hand: most first' },
+    { value: 'qty_asc',  label: 'On hand: least first' },
+    { value: 'name',     label: 'Name: A to Z' },
+  ];
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
 
@@ -285,6 +306,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
             filters={[
               { key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange:setCat, options: categories.map(c => ({ value:c, label:c })) },
               { key:'st',  label:'Stock',    value:statusFilter, defaultValue:'All', onChange:setStatus, options: ['All','In Stock','Low Stock','Out of Stock'].map(v => ({ value:v, label:v })) },
+              { key:'sort', label:'Sort',    value:sortBy, defaultValue:'default', onChange:setSortBy, options: sortOptions },
             ]}
             note={`${total} material${total !== 1 ? 's' : ''}`} />
         </>
@@ -311,6 +333,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
           <CustomSelect value={statusFilter} onChange={setStatus}
             options={['All','In Stock','Low Stock','Out of Stock']}
             style={{ width:'140px' }} />
+          <CustomSelect value={sortBy} onChange={setSortBy} options={sortOptions} style={{ width:'190px' }} />
         </div>
       </div>
 
