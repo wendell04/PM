@@ -226,7 +226,16 @@ class InventoryController extends Controller
             }
             $everMoved = [];
             try {
-                foreach (\Illuminate\Support\Facades\DB::connection('mongodb')->getCollection('stock_history')->distinct('inventoryId') as $mid) {
+                // Received (restock, opening stock, a return) or used for an order. Not a bare damage or
+                // write-off: the zipper totebags were written off to zero on a new material, and that
+                // one movement had made them look in use.
+                $moved = \Illuminate\Support\Facades\DB::connection('mongodb')->getCollection('stock_history')->distinct('inventoryId', [
+                    '$or' => [
+                        ['type' => ['$in' => ['addition', 'in']], 'reason' => ['$ne' => 'initial']],
+                        ['orderId' => ['$nin' => [null, '']]],
+                    ],
+                ]);
+                foreach ($moved as $mid) {
                     $everMoved[(string) $mid] = true;
                 }
             } catch (\Throwable $e) {
@@ -279,10 +288,20 @@ class InventoryController extends Controller
                 );
 
                 $onPublishedCard = in_array(true, $usedBy[$invId] ?? [], true);
+                // A Stock In batch counts; the "Initial stock" typed in Master Data when the material
+                // was created does not - the zipper totebags were entered with 50 and written off.
+                $stockedIn = false;
+                foreach ((array) ($inv->batches ?? []) as $bt) {
+                    $note = strtolower(trim((string) ($bt['note'] ?? $bt['notes'] ?? '')));
+                    if ($note !== 'initial stock') { $stockedIn = true; break; }
+                }
                 $inUse = in_array('orders', $reasons, true)
                     || $onPublishedCard
+                    || $stockedIn
                     || isset($everMoved[$invId])
-                    || (float) ($usage[$invId] ?? 0) > 0
+                    // perDay, not the entry: the entry is an array, and (float) of an array is 1, so
+                    // every material with any ledger row at all - a write-off included - read as used.
+                    || (float) ($usage[$invId]['perDay'] ?? 0) > 0
                     || $onHand > 0;
 
                 $rows[] = $cover + [
