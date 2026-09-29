@@ -27,7 +27,7 @@ import { socialsFrom, socialNames } from '@/lib/socialLinks';
 // display-sized copy of the same file instead.
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import { priceFrom } from '@/lib/priceFrom';
-import { priceLabel, variantCount } from '@/lib/productCardInfo';
+import { priceLabel, variantCount, salePrice } from '@/lib/productCardInfo';
 import OtpInput from '@/components/auth/OtpInput';
 import { describeAuthError } from '@/lib/describeAuthError';
 
@@ -155,6 +155,18 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
     return arr.slice(0, 5);
   }, [navProducts]);
+  // Live flash sales by product id, so the featured row shows a sale the /shop grid shows.
+  const [flashSales, setFlashSales] = useState({});
+  useEffect(() => {
+    fetchWithTimeout(`${API_URL}/api/storefront/flash-sales`, {}, 20000)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        const map = {};
+        (d?.data ?? []).forEach(sale => { if (sale.productId) map[String(sale.productId)] = sale; });
+        setFlashSales(map);
+      })
+      .catch(() => {});
+  }, []);
   const [hoveredCollection, setHoveredCollection] = useState(null);
   const [collectionProducts, setCollectionProducts] = useState([]);
   const [navHoverLoading, setNavHoverLoading]     = useState(false);
@@ -2106,6 +2118,7 @@ const handleForgotResetPassword = async () => {
                   const price = priceOf(p);
                   const img = imgOf(p);
                   const href = `/shop/products/${slugOf(p)}`;
+                  const sale = salePrice(p, flashSales[String(p._id ?? p.id)]);
                   return (
                     <a key={p._id || p.id || i} href={href}
                       onClick={e => { e.preventDefault(); router.push(href); }}
@@ -2131,13 +2144,26 @@ const handleForgotResetPassword = async () => {
                             PRINT TO ORDER
                           </span>
                         )}
+                        {sale && (
+                          <span style={{ position: 'absolute', bottom: 8, left: 8, background: 'var(--red, #dc2626)', color: '#fff',
+                            borderRadius: 6, padding: '3px 8px', fontSize: '0.66rem', fontWeight: 800, letterSpacing: '0.03em' }}>
+                            {sale.badge}
+                          </span>
+                        )}
                       </div>
                       <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
                         <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                         {p.category && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{p.category}</div>}
-                        <div style={{ marginTop: 'auto', paddingTop: '4px', fontSize: '0.95rem', fontWeight: 800, color: 'var(--gold)' }}>
-                          {priceLabel(p)}
-                        </div>
+                        {sale ? (
+                          <div style={{ marginTop: 'auto', paddingTop: '4px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--gray)', textDecoration: 'line-through' }}>{sale.was}</span>
+                            <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--red, #dc2626)' }}>{sale.now}</span>
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: 'auto', paddingTop: '4px', fontSize: '0.95rem', fontWeight: 800, color: 'var(--gold)' }}>
+                            {priceLabel(p)}
+                          </div>
+                        )}
                         {variantCount(p) > 1 && (
                           <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{variantCount(p)} variants</div>
                         )}

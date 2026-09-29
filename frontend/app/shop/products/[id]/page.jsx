@@ -10,6 +10,7 @@ import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { canGoBackInApp } from '@/lib/shopNavTrail';
 import { submitOrderRequest, uploadDesignFile } from '@/lib/orderRequestApi';
+import { salePrice } from '@/lib/productCardInfo';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
   || 'http://127.0.0.1:8000';
@@ -50,6 +51,8 @@ export default function ProductDetailPage() {
   const designRequestFee = Number(product?.designFee ?? 0) || 0;
   const [quantityInput, setQuantityInput] = useState('1');
   const [flashSale, setFlashSale] = useState(null);
+  // Every live sale, for the "You may also like" cards below.
+  const [allSales, setAllSales] = useState([]);
   const [requestingQuote, setRequestingQuote] = useState(false);
 
   const params = useParams();
@@ -166,6 +169,7 @@ export default function ProductDetailPage() {
           s => s.productId === (product.id ?? product._id)
         );
         setFlashSale(match || null);
+        setAllSales(data.data || []);
       } catch { /* silent */ }
     };
     fetchFlashSale();
@@ -1864,9 +1868,19 @@ export default function ProductDetailPage() {
                     <div className="rec-name">
                       {rec.name || rec.subCategoryName || 'Product'}
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--gold)', fontWeight: 600 }}>
-                      {recPrice}
-                    </div>
+                    {(() => {
+                      const sale = salePrice(rec, allSales.find(s => String(s.productId) === String(recId)));
+                      return sale ? (
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ color: 'var(--gray)', textDecoration: 'line-through', fontWeight: 400, fontSize: '0.7rem' }}>{sale.was}</span>
+                          <span style={{ color: 'var(--red, #dc2626)' }}>{sale.now} <span style={{ fontSize: '0.66rem' }}>{sale.badge}</span></span>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--gold)', fontWeight: 600 }}>
+                          {recPrice}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </a>
               );

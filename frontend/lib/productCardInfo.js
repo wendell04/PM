@@ -43,6 +43,32 @@ export function priceLabel(product) {
 }
 
 /**
+ * A live flash sale as it reads on a card: the listed range struck through and the range after the
+ * cut. Null when there is no sale, the product is quoted, or the sale names only some variants (the
+ * card cannot show one range for those - the product page says which).
+ */
+export function salePrice(product, sale) {
+  if (!product || !sale || sale.variantIds?.length) return null;
+  const mode  = product.priceType || product.pricingMode || 'fixed';
+  if (mode === 'inquiry') return null;
+  const tiers = product.priceTiers || product.tiers;
+  let nums = [];
+  if (mode === 'tiered' && tiers?.length) nums = tiers.flatMap(t => (t.price != null ? [t.price] : Object.values(t.prices || {})));
+  else if (product.variantPrices && Object.keys(product.variantPrices).length) nums = Object.values(product.variantPrices);
+  else nums = [product.flatPrice ?? product.price];
+  nums = nums.map(v => parseFloat(v)).filter(v => v > 0);
+  if (!nums.length) return null;
+  const cut = (n) => Math.max(0, sale.discountType === 'percentage' ? n * (1 - sale.discountValue / 100) : n - sale.discountValue);
+  const lo = Math.min(...nums), hi = Math.max(...nums);
+  const range = (a, b) => (a === b ? peso(a) : `${peso(a)} - ${peso(b)}`);
+  return {
+    was: range(lo, hi),
+    now: range(cut(lo), cut(hi)),
+    badge: sale.discountType === 'percentage' ? `${sale.discountValue}% OFF` : `₱${sale.discountValue} OFF`,
+  };
+}
+
+/**
  * The availability badge: what can be had, and whether to hurry.
  *
  * A count is per VARIANT, never the variants added together - 104 white + 180 inner + 190 magic is
