@@ -1177,42 +1177,21 @@ export default function BusinessDashboardLayout({ children }) {
                   ? `${currentUser.firstName} ${currentUser.lastName}`
                   : currentUser?.email || "User"}
               </div>
-              <span className="sidebar-footer-role">{sidebarRoleLabel}</span>
-              {superAccess?.isSuperAdmin && (
-                <span
-                  title={
-                    superAccess.fullAccess
-                      ? "Full Access - Super Admin bypasses all permission checks (SUPERADMIN_FULL_ACCESS=true). Development mode."
-                      : "Scoped - Super Admin is limited to system tasks (users, roles, audit, settings). Set SUPERADMIN_FULL_ACCESS=true to restore full access."
-                  }
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    marginTop: "3px",
-                    padding: "1px 7px",
-                    borderRadius: "999px",
-                    fontSize: "0.6rem",
-                    fontWeight: 700,
-                    letterSpacing: "0.03em",
-                    textTransform: "uppercase",
-                    cursor: "help",
-                    color: superAccess.fullAccess ? "#4ade80" : "#fbbf24",
-                    background: superAccess.fullAccess ? "rgba(74,222,128,0.12)" : "rgba(251,191,36,0.12)",
-                    border: `1px solid ${superAccess.fullAccess ? "rgba(74,222,128,0.35)" : "rgba(251,191,36,0.35)"}`,
-                  }}
-                >
+              <div className="sidebar-footer-badges">
+                <span className="sidebar-footer-role">{sidebarRoleLabel}</span>
+                {superAccess?.isSuperAdmin && (
                   <span
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: "50%",
-                      background: "currentColor",
-                    }}
-                  />
-                  {superAccess.fullAccess ? "Full Access" : "Scoped"}
-                </span>
-              )}
+                    className={`sidebar-footer-access${superAccess.fullAccess ? " is-full" : ""}`}
+                    title={
+                      superAccess.fullAccess
+                        ? "Full Access - Super Admin bypasses all permission checks (SUPERADMIN_FULL_ACCESS=true). Development mode."
+                        : "Scoped - Super Admin is limited to system tasks (users, roles, audit, settings). Set SUPERADMIN_FULL_ACCESS=true to restore full access."
+                    }
+                  >
+                    {superAccess.fullAccess ? "Full access" : "Scoped"}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>

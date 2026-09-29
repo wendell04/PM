@@ -543,6 +543,30 @@ html.light .sidebar-nav::-webkit-scrollbar-thumb:hover {
   margin-top: 0.125rem;
 }
 
+/* Role and access sit together as one set: same size and shape, the access one outlined so it reads second. */
+.sidebar-footer-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 0.125rem;
+}
+.sidebar-footer-badges .sidebar-footer-role { margin-top: 0; line-height: 1.4; padding: 0 0.5rem; border: 1px solid transparent; }
+.sidebar-footer-access {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  border-radius: 10px;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border);
+  color: var(--gray);
+  cursor: help;
+  white-space: nowrap;
+}
+.sidebar-footer-access.is-full {
+  color: var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 45%, transparent);
+}
+
 .admin-sidebar.collapsed .sidebar-footer {
   justify-content: center;
   padding: 0.75rem 0.5rem;
