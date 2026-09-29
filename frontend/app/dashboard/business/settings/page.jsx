@@ -175,13 +175,15 @@ export default function SettingsPage() {
   const ownsShop = ['superAdmin', 'admin', 'owner'].includes(currentUser?.role);
   const isSystemAdmin = ['superAdmin', 'admin'].includes(currentUser?.role);
   const access = useAccess();
-  const seesShop = ownsShop || access.can('shopSettings.view');
-  const worksShop = ownsShop || access.can('shopSettings.work');
+  // A Super Admin reaches the shop's settings through the permission map, so scoped mode
+  // (SUPERADMIN_FULL_ACCESS=false) keeps a developer out of Shipping, Chat, Order forms and Terms.
+  const seesShop = currentUser?.role === 'owner' || access.can('shopSettings.view');
+  const worksShop = currentUser?.role === 'owner' || access.can('shopSettings.work');
   const GRANTABLE_TABS = ['shipping', 'chat', 'orderforms'];
   const tabAllowed = (id) => GRANTABLE_TABS.includes(id) ? seesShop
     : id === 'integrations' ? isSystemAdmin
     : id === 'backups' ? ownsShop
-    : id === 'terms' ? ownsShop
+    : id === 'terms' ? (currentUser?.role === 'owner' || (isSystemAdmin && access.can('shopSettings.work')))
     : true;
   const shopReadOnly = GRANTABLE_TABS.includes(activeTab) && !worksShop;
 

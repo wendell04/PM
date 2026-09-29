@@ -146,9 +146,19 @@ class PermissionCatalog
                 'view'   => $v('messages.view', 'Read customer conversations and the order forms they filled.'),
                 'work'   => $v('messages.work', 'Reply and send order forms. Quoting from the chat also needs Quotations.'),
                 'extras' => []],
-            'auditLogs' => ['section' => 'Admin', 'label' => 'Audit Logs', 'note' => 'Staff, roles and customers are the owner\'s alone and cannot be granted.',
+            'auditLogs' => ['section' => 'Admin', 'label' => 'Audit Logs', 'note' => '',
                 'view'   => $v('auditLogs.view', 'Who changed what, and when.'),
                 'work'   => ['keys' => [], 'hint' => ''],
+                'extras' => []],
+
+            // ── Users ──
+            // The owner can hand the team to a trusted Administrator (paper, User Requirements 7.1).
+            // Administrators only, off until ticked; rank keeps them to people below them, and they
+            // can only give access they hold. Roles and customers stay the owner's.
+            'staffAccess' => ['section' => 'Users', 'label' => 'Staff and access', 'onlyRole' => 'administrator',
+                'note'   => 'Administrators only. They manage people below their own level and give only access they have. Roles and customers stay the owner\'s.',
+                'view'   => $v('userManagement.view', 'The team list and what each person can do, read only.'),
+                'work'   => ['keys' => ['userManagement.create', 'userManagement.edit'], 'hint' => 'Add people, change what they can do, deactivate and reactivate them.'],
                 'extras' => []],
         ];
     }
@@ -291,6 +301,13 @@ class PermissionCatalog
         // The Sales tick used to open Reports and Forecast in the sidebar too.
         'sales.view'             => ['sales.view', 'forecast.view'],
         'payments.confirm'       => ['payments.create'],
+        // Staff and access starts off for everyone: the old templates' ticks never worked.
+        'userManagement.view'       => [],
+        'userManagement.create'     => [],
+        'userManagement.edit'       => [],
+        'userManagement.delete'     => [],
+        'userManagement.disable'    => [],
+        'userManagement.assignRole' => [],
     ];
 
     /** A module switch with no ticks of its own: the whole module, as it always meant. */
@@ -319,6 +336,8 @@ class PermissionCatalog
     public static function template(string $role): array
     {
         $rec = RolePermission::where('role', $role)->first();
-        return $rec ? self::upgrade((array) ($rec->permissions ?? [])) : [];
+        // normalize, not upgrade: a template saved in today's keys is shown as saved. Upgrading it
+        // anyway dropped ticks the server still honoured (Staff and access on the Administrator role).
+        return $rec ? self::normalize((array) ($rec->permissions ?? [])) : [];
     }
 }

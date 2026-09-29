@@ -35,12 +35,28 @@ class AccessController extends Controller
             'permissions' => PermissionCatalog::normalize((array) ($r->permissions ?? [])),
         ])->values();
 
+        // What the person looking may do here, so the page offers only that. The server still
+        // checks every save; this only keeps buttons that would be refused off the screen.
+        $me = $request->user();
+        $top = Rbac::isSuperAdmin($me) || Rbac::isOwner($me);
+        $assignable = $templates->pluck('role')->filter(fn ($r) => Rbac::canAssignRole($me, (string) $r))->values();
+        if (Rbac::canAssignRole($me, config('rbac.owner_role', 'owner'))) $assignable->push(config('rbac.owner_role', 'owner'));
+
         return $this->successResponse('Catalog fetched.', [
             'groups'    => PermissionCatalog::groups(),
             // The same catalogue as rows (one per sidebar entry, See / Work / extras) - what the
             // Access editor draws.
             'rows'      => PermissionCatalog::rows(),
             'templates' => $templates,
+            'viewer'    => [
+                'role'        => $me->role,
+                'manageRoles' => $top,
+                'canCreate'   => Rbac::allowsFor($me, 'userManagement.create', true),
+                'canEdit'     => Rbac::allowsFor($me, 'userManagement.edit', true),
+                'assignable'  => $assignable,
+                // Below the owner, nobody gives what they do not hold: the page greys those out.
+                'grid'        => $top ? null : Rbac::effectivePermissions($me),
+            ],
         ]);
     }
 
@@ -51,8 +67,14 @@ class AccessController extends Controller
             return $this->unauthorizedResponse();
         }
 
+        $me = $request->user();
+        // May the person looking change this one: only people below them, never themselves.
+        $below = fn (User $u) => (string) $u->_id !== (string) $me->_id
+            && !Rbac::isOwner($u) && !Rbac::isSuperAdmin($u)
+            && (Rbac::isSuperAdmin($me) || Rbac::rank($me->role) > Rbac::rank($u->role));
+
         $rows = User::where('role', '!=', 'customer')->orderBy('firstName')->get()
-            ->map(function (User $u) {
+            ->map(function (User $u) use ($below) {
                 $own = is_array($u->permissions ?? null) ? PermissionCatalog::normalize($u->permissions) : [];
                 // Owner and Super Admin are not grantable - saying so on screen is better than
                 // showing a grid of ticks that the resolver ignores anyway.
@@ -72,12 +94,14 @@ class AccessController extends Controller
                     // A customer's own account given staff access. Removing them hands it back.
                     'fromCustomer' => (bool) ($u->promotedFromCustomer ?? false),
                     'deactivated'  => false,
+                    'manageable'   => $below($u),
                 ];
             })->values();
 
         // Deactivated staff: customer accounts now, listed so they can be reactivated.
         $off = User::where('role', 'customer')->whereNotNull('deactivatedRole')->orderBy('firstName')->get()
             ->map(fn (User $u) => [
+                'manageable'    => Rbac::canAssignRole($me, (string) $u->deactivatedRole),
                 'id'            => (string) $u->_id,
                 'firstName'     => $u->firstName,
                 'lastName'      => $u->lastName,
@@ -110,7 +134,7 @@ class AccessController extends Controller
             return $this->unauthorizedResponse();
         }
 
-        $grid = PermissionCatalog::sanitize((array) $request->input('permissions', []));
+        $grid = Rbac::stripPeopleKeys(PermissionCatalog::sanitize((array) $request->input('permissions', [])), (string) $request->input('role'));
 
         // Same rule as editing: nobody hands out what they do not hold.
         $editor = $request->user();
@@ -186,13 +210,16 @@ class AccessController extends Controller
             }
         }
 
-        $grid = PermissionCatalog::sanitize($validated['permissions'] ?? []);
+        $grid = Rbac::stripPeopleKeys(PermissionCatalog::sanitize($validated['permissions'] ?? []), $newRole ?: $user->role);
 
         // Nobody may grant what they do not hold. Without this, a staff member with
         // userManagement.edit could hand themselves the whole shop through a colleague's account.
+        // Ticks the person already has are theirs to keep (the owner gave them); only adding
+        // something the editor lacks is refused, or one missing tick would block every edit.
         if (!Rbac::isOwner($editor) && !Rbac::isSuperAdmin($editor)) {
+            $current = Rbac::grid($user);
             foreach (array_keys($grid) as $key) {
-                if (!Rbac::allows($editor, $key)) {
+                if (!Rbac::allows($editor, $key) && empty($current[$key])) {
                     return $this->errorResponse("You cannot grant \"{$key}\" because you do not have it yourself.", 422);
                 }
             }

@@ -72,7 +72,7 @@ class RolePermissionController extends Controller
             }
 
             // A template can start as a copy of another; only real catalog keys are kept.
-            $startWith = \App\Support\PermissionCatalog::sanitize((array) $request->input('permissions', []));
+            $startWith = \App\Support\Rbac::stripPeopleKeys(\App\Support\PermissionCatalog::sanitize((array) $request->input('permissions', [])), $role);
 
             $record = RolePermission::create([
                 'role'        => $role,
@@ -155,7 +155,7 @@ class RolePermissionController extends Controller
 
             // Only keys the catalog offers - the same list the Access grid shows - so a template
             // cannot carry a tick nobody can see or explain.
-            $filtered = \App\Support\PermissionCatalog::sanitize((array) $request->input('permissions', []));
+            $filtered = \App\Support\Rbac::stripPeopleKeys(\App\Support\PermissionCatalog::sanitize((array) $request->input('permissions', [])), $role);
             $label    = trim((string) $request->input('label', ''));
             if ($label !== '') $record->label = mb_substr(strip_tags($label), 0, 60);
 

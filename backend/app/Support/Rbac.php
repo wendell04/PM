@@ -71,6 +71,7 @@ class Rbac
         // `permissions` on the user has existed and been empty since it was added, so nothing
         // changes for anyone until a grid is actually saved against them: an empty grid falls
         // through to exactly today's behaviour.
+        if (self::isPeopleKey($permKey) && $user->role !== self::PEOPLE_ROLE) return false;
         return self::gridAllows(self::grid($user), $permKey);
     }
 
@@ -191,10 +192,31 @@ class Rbac
             : (int) config('rbac.default_staff_rank', 10);
     }
 
+    public static function shopHasOwner(): bool
+    {
+        return User::where('role', config('rbac.owner_role', 'owner'))->exists();
+    }
+
+    /** Staff and access can be given to an Administrator only; rank decides who they may manage. */
+    public const PEOPLE_ROLE = 'administrator';
+
+    public static function isPeopleKey(string $permKey): bool
+    {
+        return $permKey === 'userManagement' || str_starts_with($permKey, 'userManagement.');
+    }
+
+    /** Take Staff and access ticks off a grid meant for anyone but an Administrator. */
+    public static function stripPeopleKeys(array $grid, ?string $role): array
+    {
+        if ($role === self::PEOPLE_ROLE) return $grid;
+        return array_filter($grid, fn ($k) => !self::isPeopleKey((string) $k), ARRAY_FILTER_USE_KEY);
+    }
+
     /**
      * May $actor grant the role $targetRoleKey to a user?
      *   - Super Admin roles are NEVER assignable through the staff flow.
-     *   - Only a Super Admin may designate an Owner.
+     *   - Only a Super Admin may designate an Owner, and only while the shop has none: after that
+     *     the owner is the business's, and a developer making a second one would undo scoped mode.
      *   - Otherwise the actor must strictly outrank the role being granted,
      *     which blocks self-promotion and sideways/upward assignment.
      */
@@ -206,7 +228,7 @@ class Rbac
             return false;
         }
         if ($targetRoleKey === config('rbac.owner_role', 'owner')) {
-            return self::isSuperAdmin($actor);
+            return self::isSuperAdmin($actor) && !self::shopHasOwner();
         }
         return self::rank($actor->role) > self::rank($targetRoleKey);
     }
@@ -242,6 +264,6 @@ class Rbac
         // switch would tell the sidebar something the server no longer believes.
         $base = array_map(fn () => false, $all);
         $base['dashboard'] = true;
-        return array_merge($base, self::grid($user));
+        return array_merge($base, self::stripPeopleKeys(self::grid($user), $user->role));
     }
 }

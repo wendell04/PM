@@ -53,8 +53,10 @@ const MODULES = [
   { key: 'payments', name: 'Payments', href: '/dashboard/business/payments', d: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
   { key: 'sales', name: 'Sales', href: '/dashboard/business/sales', d: 'M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z' },
   { key: 'reports', name: 'Reports', href: '/dashboard/business/reports', d: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  { key: 'ownerOnly', name: 'Messages', href: '/dashboard/business/chat', d: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
+  { key: 'messages', name: 'Messages', href: '/dashboard/business/chat', d: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
   { key: 'ownerOnly', name: 'Customers', href: '/dashboard/business/customers', d: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
+  { key: 'userManagement', name: 'Staff and access', href: '/dashboard/business/access', d: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
+  { key: 'auditLogs', name: 'Audit Logs', href: '/dashboard/business/audit-logs', d: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
   { key: 'dashboard', name: 'Settings', href: '/dashboard/business/settings', d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
 ];
 
@@ -113,7 +115,8 @@ export default function StaffHome() {
       if (o.status === 'fulfilled' && o.value.ok) {
         const j = await o.value.json();
         setOrders(Array.isArray(j?.data) ? j.data : (j?.data?.orders ?? j?.orders ?? []));
-      } else {
+      } else if (!(o.status === 'fulfilled' && o.value.status === 403)) {
+        // A refusal is not a failure: someone without Orders just gets a Home without them.
         setError('Could not load orders. The figures below are incomplete - this is not a real zero.');
       }
       if (b.status === 'fulfilled' && b.value.ok) {
@@ -156,18 +159,23 @@ export default function StaffHome() {
 
   useEffect(() => { load(); }, [load]);
 
-  const isSuper = SUPER.includes(currentUser?.role);
+  // A Super Admin in scoped mode (SUPERADMIN_FULL_ACCESS=false) is not the owner: Home follows the
+  // permission map the server sends, which leaves out the business.
+  const isSuper = currentUser?.role === 'owner'
+    || (SUPER.includes(currentUser?.role) && (perms?.full_access ?? perms?.data?.full_access) !== false);
   // Same rule as the sidebar and the server: a module is open when its switch is on or any of its
   // actions is ("jobOrders.view" opens Job Orders). A list means any one of those keys.
   const allows = useCallback((key) => {
     if (Array.isArray(key)) return key.some(k => allows(k));
     if (isSuper) return true;
-    if (!perms || key === 'ownerOnly') return false;
+    // Customers is the owner's and the system admin's (account support), never a grantable row.
+    if (key === 'ownerOnly') return SUPER.includes(currentUser?.role);
+    if (!perms) return false;
     const grid = perms?.permissions ?? perms;
     const g = grid?.[key];
     if (g === true || (g && typeof g === 'object' && Object.values(g).some(Boolean))) return true;
     return Object.keys(grid || {}).some(k => k.startsWith(key + '.') && grid[k] === true);
-  }, [perms, isSuper]);
+  }, [perms, isSuper, currentUser?.role]);
 
   // ── What is stuck. Derived from the orders already fetched, so no extra calls. ──
   const blocked = useMemo(() => {
@@ -998,7 +1006,9 @@ export default function StaffHome() {
             </div>
           )}
 
-          {/* ── Needs you now ── */}
+          {/* ── Needs you now ── only for someone who can see the work it reads; "nothing is stuck"
+              from a person who cannot see orders would be a claim, not a fact. */}
+          {allows(['orders', 'jobOrders', 'orderRequests', 'payments', 'pos', 'production', 'qc']) && (
           <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '18px' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>
               Needs you now
@@ -1027,6 +1037,7 @@ export default function StaffHome() {
               );
             })}
           </div>
+          )}
 
 
           {/* ── The launchpad ── */}

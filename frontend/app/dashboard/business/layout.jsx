@@ -552,9 +552,11 @@ export default function BusinessDashboardLayout({ children }) {
   const { theme, toggleTheme } = useTheme();
 
   // One answer for "may this person open this item", read by the sidebar and by the route guard.
+  // The owner sees everything; a Super Admin goes through can(), so scoped mode hides the business
+  // modules instead of listing pages the server then refuses.
   const itemAccessible = (item) => {
     if (item.adminOnly && !isAdminOwner) return false;
-    if (isAdminOwner) return true;
+    if (currentUser?.role === "owner") return true;
     return can(item.permKey ?? "dashboard");
   };
 
@@ -702,8 +704,8 @@ export default function BusinessDashboardLayout({ children }) {
       // pages still exist at their URLs and redirect here; they are deleted once this is proven.
       name: "Staff and access",
       href: "/dashboard/business/access",
-      // Owner and Super Admin only - the server's staff routes are, so a tick could never open it.
-      adminOnly: true,
+      // Owner and Super Admin, and an Administrator the owner has given Staff and access.
+      permKey: "userManagement",
       icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
     },
     {
@@ -741,7 +743,8 @@ export default function BusinessDashboardLayout({ children }) {
   // module URL the role cannot open goes back to Home with one line saying which one.
   const HOME = "/dashboard/business/home";
   useEffect(() => {
-    if (!currentUser || isAdminOwner || permissions === null) return;
+    // The owner is never turned away; a Super Admin is checked like anyone, so scoped mode holds.
+    if (!currentUser || currentUser.role === "owner" || permissions === null) return;
     // Compare on the path only: several items carry ?tab=... in their href, and the pathname
     // never does, so the inventory pages matched nothing and went unguarded.
     const pathOf = (href) => String(href).split("?")[0];
@@ -1520,8 +1523,7 @@ export default function BusinessDashboardLayout({ children }) {
           for (const item of navItems) {
             if (item.type === "divider") { cur = { label: item.label, items: [] }; sections.push(cur); continue; }
             if (!cur) { cur = { label: "", items: [] }; sections.push(cur); }
-            if (item.adminOnly && !isAdminOwner) continue;
-            const ok = isAdminOwner || can(item.permKey ?? "dashboard");
+            const ok = itemAccessible(item);
             if (ok && item.href) cur.items.push(item);
           }
           // The same test the sidebar uses: a plain path, or a path plus its ?tab= family.

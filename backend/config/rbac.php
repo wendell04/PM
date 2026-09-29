@@ -152,7 +152,6 @@ return [
                 'inventory' => 'full', 'vendors' => 'full', 'badOrders' => 'full',
                 'sales' => 'full', 'reports' => 'full', 'payments' => 'full',
                 'products' => 'full', 'banners' => 'full', 'flashSales' => 'full', 'vouchers' => 'full',
-                'userManagement' => 'full',
             ],
         ],
         'manager' => [

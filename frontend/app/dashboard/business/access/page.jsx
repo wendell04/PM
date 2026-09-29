@@ -75,6 +75,9 @@ export default function AccessPage() {
   const [ask, setAsk] = useState(null);
   const confirmAsk = (opts) => new Promise(resolve => setAsk({ ...opts, resolve }));
   const [templates, setTemplates] = useState([]);
+  // What the person looking may do here (from the server): an Administrator given Staff and access
+  // sees only people below them, only the roles they may give, and cannot edit role templates.
+  const [viewer, setViewer] = useState({ manageRoles: false, canCreate: false, canEdit: false, assignable: [], grid: null });
   const [staff,     setStaff]     = useState([]);
   const [deactivated, setDeactivated] = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -105,6 +108,8 @@ export default function AccessPage() {
       const cd = await c.json(), sd = await s.json();
       setRows(cd?.data?.rows ?? {});
       setTemplates(cd?.data?.templates ?? []);
+      // An older server sends no viewer: behave as before (only the owner and super admin got here).
+      setViewer(cd?.data?.viewer ?? { manageRoles: true, canCreate: true, canEdit: true, assignable: null, grid: null });
       const all = sd?.data ?? [];
       setStaff(all.filter(r => !r.deactivated));
       setDeactivated(all.filter(r => r.deactivated));
@@ -161,8 +166,22 @@ export default function AccessPage() {
   const applyTemplate = (role) => {
     const t = templates.find(x => x.role === role);
     if (!t) return;
-    setDraft({ ...(t.permissions ?? {}) });
-    toast?.(`Filled in from the ${t.label} template. Adjust anything you like before saving.`, 'info');
+    // Below the owner, the template fills in only what the viewer may give (or the person already
+    // has); the rest would be refused on save, so it is left off and named.
+    const had = editing?.permissions ?? {};
+    const keep = {}, dropped = new Set();
+    for (const [k, v] of Object.entries(t.permissions ?? {})) {
+      if (!v) continue;
+      if (!viewer.grid || viewer.grid[k] === true || had[k] === true) keep[k] = true;
+      else {
+        const row = Object.values(rows).find(r => [...r.view.keys, ...r.work.keys, ...Object.keys(r.extras || {})].includes(k));
+        dropped.add(row?.label ?? k);
+      }
+    }
+    setDraft(keep);
+    toast?.(dropped.size
+      ? `Filled in from the ${t.label} template. Left off because you do not have it yourself: ${[...dropped].join(', ')}.`
+      : `Filled in from the ${t.label} template. Adjust anything you like before saving.`, 'info');
   };
 
   const save = async () => {
@@ -456,7 +475,7 @@ export default function AccessPage() {
               value={isNew ? newFields.role : ''}
               onChange={(v) => { if (isNew) { setNewFields(p => ({ ...p, role: v })); setFieldErr(p => ({ ...p, role: '' })); } applyTemplate(v); }}
               options={[{ value: '', label: 'Choose one...' },
-                ...templates.map(t => ({ value: t.role, label: t.label }))]}
+                ...templates.filter(t => !viewer.assignable || viewer.assignable.includes(t.role) || t.role === editing.role).map(t => ({ value: t.role, label: t.label }))]}
               style={{ width: 190 }} />
             )}
             <button onClick={() => setDraft({})} style={S.btnSmGhost}>Clear all</button>
@@ -467,7 +486,9 @@ export default function AccessPage() {
         {(() => {
           // Sections in sidebar order; rows keep the order the server sends (the sidebar's).
           const sections = [];
+          const forRole = editingRole ? editingRole.role : isNew ? newFields.role : editing.role;
           for (const [id, r] of Object.entries(rows)) {
+            if (r.onlyRole && forRole !== r.onlyRole) continue;
             let sec = sections.find(x => x.name === r.section);
             if (!sec) { sec = { name: r.section, rows: [] }; sections.push(sec); }
             sec.rows.push([id, r]);
@@ -483,6 +504,10 @@ export default function AccessPage() {
               {sec.rows.map(([id, r], i) => {
                 const lvl = levelOf(r, draft);
                 const levels = r.work.keys.length ? ['off', 'see', 'work'] : ['off', 'see'];
+                // Below the owner you give only what you hold; ticks the person already has stay theirs.
+                const had = editing.permissions ?? {};
+                const mayGive = (keys) => !viewer.grid || keys.every(k => viewer.grid[k] === true || had[k] === true);
+                const levelKeys = (l) => l === 'work' ? [...r.view.keys, ...r.work.keys] : l === 'see' ? r.view.keys : [];
                 const extras = Object.entries(r.extras || {});
                 return (
                   <div key={id} style={{ padding: '10px 14px', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
@@ -494,7 +519,9 @@ export default function AccessPage() {
                       <div role="radiogroup" aria-label={r.label}
                         style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
                         {levels.map(l => (
-                          <button key={l} type="button" role="radio" aria-checked={lvl === l} onClick={() => setLevel(r, l)} style={seg(lvl === l)}>
+                          <button key={l} type="button" role="radio" aria-checked={lvl === l} onClick={() => setLevel(r, l)}
+                            disabled={!mayGive(levelKeys(l))} title={mayGive(levelKeys(l)) ? undefined : 'You do not have this yourself, so you cannot give it.'}
+                            style={{ ...seg(lvl === l), ...(mayGive(levelKeys(l)) ? {} : { opacity: 0.35, cursor: 'not-allowed' }) }}>
                             {l === 'off' ? 'Off' : l === 'see' ? 'See' : 'Work'}
                           </button>
                         ))}
@@ -508,8 +535,9 @@ export default function AccessPage() {
                     {lvl !== 'off' && extras.length > 0 && (
                       <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {extras.map(([k, [label, hint]]) => (
-                          <label key={k} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '5px 0', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={!!draft[k]} onChange={e => toggleExtra(r, k, e.target.checked)}
+                          <label key={k} title={mayGive([k]) ? undefined : 'You do not have this yourself, so you cannot give it.'}
+                            style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '5px 0', cursor: mayGive([k]) ? 'pointer' : 'not-allowed', opacity: mayGive([k]) ? 1 : 0.45 }}>
+                            <input type="checkbox" checked={!!draft[k]} onChange={e => toggleExtra(r, k, e.target.checked)} disabled={!mayGive([k]) && !draft[k]}
                               style={{ marginTop: 2, width: 16, height: 16, flexShrink: 0, accentColor: 'var(--gold)' }} />
                             <span style={{ minWidth: 0 }}>
                               <span style={{ fontSize: 12.5, color: 'var(--white)' }}>{label}</span>
@@ -577,7 +605,7 @@ export default function AccessPage() {
             <div style={{ flex: 1, minWidth: 220 }}>
               <SearchBar value={search} onChange={setSearch} placeholder="Search name, email or role" />
             </div>
-            <button onClick={openNew} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>+ Add staff</button>
+            {viewer.canCreate && <button onClick={openNew} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>+ Add staff</button>}
           </div>
 
           {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', marginBottom: 12 }}>{error}</div>}
@@ -589,7 +617,7 @@ export default function AccessPage() {
           ) : isPhone ? (
             <PhoneList>
               {filtered.map((r, i) => (
-                <PhoneRow key={r.id} first={i === 0} onClick={() => !r.unlimited && openEditor(r)}
+                <PhoneRow key={r.id} first={i === 0} onClick={!r.unlimited && r.manageable !== false && viewer.canEdit ? () => openEditor(r) : undefined}
                   title={`${r.firstName} ${r.lastName}`}
                   chip={<span style={{ fontSize: 11, fontWeight: 700, color: r.unlimited ? 'var(--gold)' : 'var(--gray)' }}>
                     {r.unlimited ? 'Unlimited' : r.source === 'person' ? 'Per person' : 'Template'}
@@ -619,14 +647,14 @@ export default function AccessPage() {
                         )}
                       </td>
                       <td style={{ ...S.td, fontSize: 11.5 }}>
-                        <span style={{ padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                        <span style={{ padding: '2px 7px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap',
                           background: r.unlimited ? 'rgba(212,168,67,0.14)' : r.source === 'person' ? 'rgba(46,125,50,0.12)' : 'var(--dark2)',
                           color: r.unlimited ? 'var(--gold)' : r.source === 'person' ? 'var(--st-green-fg)' : 'var(--gray)' }}>
                           {r.unlimited ? 'Unlimited' : r.source === 'person' ? 'Per person' : 'Template'}
                         </span>
                       </td>
                       <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {!r.unlimited && (
+                        {!r.unlimited && r.manageable !== false && viewer.canEdit && (
                           <span style={{ display: 'inline-flex', gap: 6 }}>
                             <button onClick={() => openEditor(r)} style={S.btnSmGhost}>Edit access</button>
                             <button onClick={() => setActive(r, false)} style={S.btnSmGhost}>Deactivate</button>
@@ -652,7 +680,7 @@ export default function AccessPage() {
                     <div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.firstName} {r.lastName} <span style={{ fontWeight: 400, color: 'var(--gray)', fontSize: 12 }}>was {r.roleLabel}</span></div>
                     <div style={{ fontSize: 11.5, color: 'var(--gray)', overflowWrap: 'anywhere' }}>{r.email}</div>
                   </div>
-                  <button onClick={() => setActive(r, true)} style={S.btnSmGhost}>Reactivate</button>
+                  {r.manageable !== false && viewer.canEdit && <button onClick={() => setActive(r, true)} style={S.btnSmGhost}>Reactivate</button>}
                 </div>
               ))}
             </div>
@@ -666,7 +694,7 @@ export default function AccessPage() {
                   <div style={{ fontWeight: 700, fontSize: 14 }}>Roles</div>
                   <div style={{ fontSize: 11.5, color: 'var(--gray)' }}>A role is a template - the ticks a new person starts with. What each person can actually do is set above.</div>
                 </div>
-                <button onClick={() => setRoleForm({ label: '', startFrom: '' })} style={S.btnSmGhost}>+ Add role</button>
+                {viewer.manageRoles && <button onClick={() => setRoleForm({ label: '', startFrom: '' })} style={S.btnSmGhost}>+ Add role</button>}
               </div>
               {roleForm && (
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -686,14 +714,14 @@ export default function AccessPage() {
                     <div key={t.role} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', background: 'var(--dark)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                         <RoleBadge label={t.label} />
-                        <span style={{ display: 'inline-flex', gap: 6 }}>
+                        {viewer.manageRoles && <span style={{ display: 'inline-flex', gap: 6 }}>
                         <button onClick={() => openRoleEditor(t)} style={S.btnSmGhost}>Edit</button>
                         <button onClick={() => deleteRole(t)} disabled={roleBusy === t.role || who.length > 0}
                           title={who.length ? `Held by ${who.map(w => w.firstName).join(', ')}` : 'Delete this role'}
                           style={{ ...S.btnSmGhost, color: who.length ? 'var(--gray)' : 'var(--st-red-fg, #dc2626)', opacity: who.length ? 0.6 : 1 }}>
                           {roleBusy === t.role ? '...' : 'Delete'}
                         </button>
-                        </span>
+                        </span>}
                       </div>
                       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--white)', marginTop: 8 }}>{headline(t.permissions)}</div>
                       <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 2 }}><Clamp lines={3}>{summarise(t.permissions)}</Clamp></div>

@@ -214,6 +214,18 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     // Database backups: last runs, and run one now. The controller checks system admin / owner.
     Route::get('/admin/backups',                          [\App\Http\Controllers\BackupController::class, 'index']);
     Route::post('/admin/backups/run',                     [\App\Http\Controllers\BackupController::class, 'run'])->middleware('throttle:3,1');
+    Route::get('/admin/customers',                        [StaffController::class, 'customers']);
+    Route::post('/admin/customers/{id}/unlock',           [StaffController::class, 'unlockCustomer']);
+    Route::get('/admin/unlock-requests',                  [StaffController::class, 'unlockRequests']);
+    Route::post('/admin/unlock-requests/{id}/approve',    [StaffController::class, 'approveUnlock']);
+    Route::post('/admin/unlock-requests/{id}/deny',       [StaffController::class, 'denyUnlock']);
+});
+
+// ─── Staff and access ── owner, super admin, and an Administrator the owner gave it to ──
+// The role gate lets an Administrator reach these; the controllers then require the Staff and
+// access permission and that the person changed is below them. Roles, customers, settings and
+// backups stay in the owner-only group above.
+Route::middleware(['auth:sanctum', 'isAdmin:owner,admin,administrator'])->group(function () {
     Route::get('/admin/access/catalog',                   [AccessController::class, 'catalog']);
     Route::get('/admin/access/staff',                     [AccessController::class, 'staff']);
     Route::post('/admin/access/staff',                    [AccessController::class, 'createStaff']);
@@ -225,11 +237,6 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::post('/admin/staff',                           [StaffController::class, 'store']);
     Route::put('/admin/staff/{id}',                       [StaffController::class, 'update']);
     Route::delete('/admin/staff/{id}',                    [StaffController::class, 'destroy']);
-    Route::get('/admin/customers',                        [StaffController::class, 'customers']);
-    Route::post('/admin/customers/{id}/unlock',           [StaffController::class, 'unlockCustomer']);
-    Route::get('/admin/unlock-requests',                  [StaffController::class, 'unlockRequests']);
-    Route::post('/admin/unlock-requests/{id}/approve',    [StaffController::class, 'approveUnlock']);
-    Route::post('/admin/unlock-requests/{id}/deny',       [StaffController::class, 'denyUnlock']);
 });
 
 // ─── Admin (authenticated + any staff role) ───────────────────────────────────

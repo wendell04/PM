@@ -296,6 +296,10 @@ class StaffController extends Controller
             if ((string) $staff->_id === (string) $request->user()->_id) {
                 return $this->errorResponse('Cannot delete your own account.', 403);
             }
+            if (!\App\Support\Rbac::isSuperAdmin($request->user())
+                && \App\Support\Rbac::rank($request->user()->role) <= \App\Support\Rbac::rank($staff->role)) {
+                return $this->errorResponse('You cannot remove someone at or above your own level.', 403);
+            }
 
             // A customer who was given staff access goes back to being a customer - deleting them would
             // take their own account and order history with the job. The same for any staff login that
