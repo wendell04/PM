@@ -38,6 +38,22 @@ const pct  = (now, before) => {
   return (d >= 0 ? '+' : '') + d.toFixed(d >= 100 ? 0 : 1) + '%';
 };
 
+// The report as a real PDF from the server (A4, same numbers). Print still works for the browser way.
+async function downloadPdf(token, type, params, setBusy, setError) {
+  setBusy(true);
+  try {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    const res = await fetch(`${API_URL}/api/admin/reports/${type}/pdf${qs}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' } });
+    if (!res.ok) throw new Error('Could not make the PDF. Try again.');
+    const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || `${type}-report.pdf`;
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (e) {
+    setError?.(e.message);
+  } finally { setBusy(false); }
+}
+
 function exportCSV(headers, rows, filename) {
   const esc = (v) => {
     if (v == null) return '';
@@ -192,6 +208,7 @@ function SalesReport({ token }) {
   const [range, setRange] = useState(() => { const [from, to] = PRESETS[0].range(); return { preset: 'this-month', from, to }; });
   const [bucket, setBucket] = useState('auto');
   const [data, setData] = useState(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -253,6 +270,7 @@ function SalesReport({ token }) {
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {mayExport && (<button type="button" onClick={exportRows} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>)}
+          <button type="button" onClick={() => downloadPdf(token, 'sales', { from: range.from, to: range.to, bucket }, setPdfBusy, setError)} disabled={!data || pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>{pdfBusy ? 'Making PDF...' : 'Download PDF'}</button>
           <button type="button" onClick={() => window.print()} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
         </div>
       </div>
@@ -374,6 +392,8 @@ function InventoryReport({ token }) {
   const mayExport = useAccess().can('reports.export');
   const isPhone = useIsPhone();
   const [data, setData] = useState(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState('');
   const [error, setError] = useState('');
   useEffect(() => {
     if (!token) return;
@@ -406,8 +426,10 @@ function InventoryReport({ token }) {
     <>
       <div className="rpt-noprint" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12.5, color: 'var(--gray)' }}>As of {data.asOf} (Manila). Stock is a snapshot; movement is the last 30 days.</span>
+        {pdfError && <span style={{ fontSize: 12.5, color: 'var(--st-red-fg)' }}>{pdfError}</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {mayExport && (<button type="button" onClick={exportRows} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>)}
+          <button type="button" onClick={() => { setPdfError(''); downloadPdf(token, 'inventory', null, setPdfBusy, setPdfError); }} disabled={pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>{pdfBusy ? 'Making PDF...' : 'Download PDF'}</button>
           <button type="button" onClick={() => window.print()} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
         </div>
       </div>

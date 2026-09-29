@@ -76,6 +76,48 @@ class ReportController extends Controller
     }
 
     /**
+     * GET /api/admin/reports/{type}/pdf - the same report as a PDF file (sales takes from/to).
+     *
+     * The page only had Print, which leaves it to the browser; this is a real download, laid out for
+     * A4 by dompdf the way the receipt is.
+     */
+    public function pdf(Request $request, string $type)
+    {
+        if (!in_array($type, ['sales', 'inventory'], true)) return $this->notFoundResponse('Report');
+        $res = $type === 'sales' ? $this->sales($request) : $this->inventory($request);
+        if ($res->getStatusCode() !== 200) return $res;
+        $d = json_decode($res->getContent(), true)['data'] ?? [];
+
+        $user = $request->user();
+        $view = [
+            'd'           => $d,
+            'title'       => $type === 'sales' ? 'Sales report' : 'Inventory report',
+            'subtitle'    => $type === 'sales' ? ($d['range']['label'] ?? '') : ('Stock as of ' . ($d['asOf'] ?? '')),
+            'generatedAt' => CarbonImmutable::now(self::TZ)->format('M j, Y g:i A'),
+            'generatedBy' => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: 'staff',
+        ];
+        try {
+            $options = new \Dompdf\Options();
+            $options->set('isRemoteEnabled', false);
+            $options->set('isHtml5ParserEnabled', true);
+            $options->set('defaultFont', 'DejaVu Sans');   // has the peso sign
+            $dompdf = new \Dompdf\Dompdf($options);
+            $dompdf->loadHtml(view('reports.pdf-' . $type, $view)->render(), 'UTF-8');
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+        } catch (\Throwable $e) {
+            return $this->serverErrorResponse($e, 'Could not make the PDF.');
+        }
+        $name = $type === 'sales'
+            ? 'Sales-report-' . ($d['range']['from'] ?? '') . '-to-' . ($d['range']['to'] ?? '') . '.pdf'
+            : 'Inventory-report-' . CarbonImmutable::now(self::TZ)->toDateString() . '.pdf';
+        return response($dompdf->output(), 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $name . '"',
+        ]);
+    }
+
+    /**
      * GET /api/admin/reports/inventory
      *
      * What the shelf is worth, what is below its line, what is out, and what left the shelf in the
