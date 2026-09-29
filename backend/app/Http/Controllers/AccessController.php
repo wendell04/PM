@@ -171,6 +171,21 @@ class AccessController extends Controller
             'isActive'      => 'nullable|boolean',
         ]);
 
+        // Only someone above them edits them, and a role change passes the same rule as creating
+        // someone with that role. Without this the role field took any value: an owner could make
+        // a staff member Super Admin, and a scoped Super Admin could make one an owner.
+        if (!Rbac::isSuperAdmin($editor) && Rbac::rank($editor->role) <= Rbac::rank($user->role)) {
+            return $this->errorResponse('You cannot change someone at or above your own level.', 403);
+        }
+        $newRole = $validated['role'] ?? null;
+        if ($newRole && $newRole !== $user->role) {
+            $known = array_key_exists($newRole, (array) config('rbac.role_ranks', []))
+                || \App\Models\RolePermission::where('role', $newRole)->exists();
+            if (!$known || !Rbac::canAssignRole($editor, $newRole)) {
+                return $this->errorResponse('You cannot give that role.', 403);
+            }
+        }
+
         $grid = PermissionCatalog::sanitize($validated['permissions'] ?? []);
 
         // Nobody may grant what they do not hold. Without this, a staff member with
