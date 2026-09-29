@@ -350,7 +350,7 @@ function SalesReport({ token }) {
             <div style={{ display: 'grid', gridTemplateColumns: isPhone ? '1fr' : '1fr 1fr', gap: 14 }}>
               <Card title="Where it came from" sub="Online is the storefront; counter is an order the staff entered.">
                 <Table cols={[
-                  { key: 'k', label: 'Channel', strong: true },
+                  { key: 'key', label: 'Channel', strong: true },
                   { key: 'orders', label: 'Orders', right: true },
                   { key: 'revenue', label: 'Revenue', right: true, render: r => peso(r.revenue) },
                   { key: 'share', label: 'Share', right: true, muted: true, wide: true, render: r => t.revenue ? `${((r.revenue / t.revenue) * 100).toFixed(0)}%` : '-' },
