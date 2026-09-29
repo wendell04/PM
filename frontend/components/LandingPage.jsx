@@ -17,7 +17,7 @@ import { fetchNotifications, markNotificationRead, markAllNotificationsRead } fr
 import CustomerChatModal from '@/components/chat/CustomerChatModal';
 // Shared with the shop layout - one sign-up form (fields, CAPTCHA, password rules, T&C) everywhere.
 import RegisterForm from '@/components/auth/RegisterForm';
-import { PasswordGuide } from '@/components/auth/PasswordGuide';
+import { PasswordGuide, PasswordChecklist } from '@/components/auth/PasswordGuide';
 import '@/components/custom-styles.css';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import useSheetDrag from '@/lib/useSheetDrag';
@@ -3169,7 +3169,8 @@ const handleForgotResetPassword = async () => {
                         {showForgotPassword ? <EyeOpen/> : <EyeClosed/>}
                       </button>
                     </div>
-                    <PasswordGuide password={forgotNewPassword} focused={forgotPasswordFocused}/>
+                    {/* Listed in full here: staff meet this screen from an invite, and the popover was easy to miss. */}
+                    <PasswordChecklist password={forgotNewPassword}/>
                   </div>
                   <div className="auth-field">
                     <label>Confirm New Password</label>

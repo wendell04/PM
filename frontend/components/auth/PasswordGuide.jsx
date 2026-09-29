@@ -89,4 +89,28 @@ export const PasswordGuide = ({password, focused}) => {
   return null;
 };
 
+/**
+ * The rules in full, under the field, whether or not it has focus: each one ticks as it is met, with
+ * the strength bar below. For screens where a popover gets clipped or goes unnoticed - a staff member
+ * setting a first password from an invite saw no rules at all and learned them from the error.
+ */
+export const PasswordChecklist = ({password}) => (
+  <div style={{marginTop:'0.5rem',display:'flex',flexDirection:'column',gap:'0.35rem'}}>
+    {PASSWORD_RULES.map(r => {
+      const ok = r.test(password);
+      return (
+        <div key={r.label} style={{display:'flex',alignItems:'center',gap:'0.45rem',fontSize:'0.78rem',color: ok ? 'var(--green)' : 'var(--gray)'}}>
+          <span aria-hidden="true" style={{width:'14px',display:'inline-flex',justifyContent:'center'}}>
+            {ok
+              ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              : <span style={{width:'6px',height:'6px',borderRadius:'50%',background:'currentColor',opacity:0.5}}/>}
+          </span>
+          <span>{r.label}</span>
+        </div>
+      );
+    })}
+    {password.length > 0 && <div style={{marginTop:'0.2rem'}}><PasswordStrength password={password}/></div>}
+  </div>
+);
+
 export default PasswordGuide;
