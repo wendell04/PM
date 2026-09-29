@@ -1814,7 +1814,7 @@ export default function SettingsPage() {
 
           {activeTab === 'orderforms' && <OrderForms token={token} />}
 
-          {activeTab === 'backups' && <BackupsPanel token={token} />}
+          {activeTab === 'backups' && <BackupsPanel token={token} developer={['superAdmin', 'admin'].includes(currentUser?.role)} />}
 
           {activeTab === 'integrations' && (
   <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>

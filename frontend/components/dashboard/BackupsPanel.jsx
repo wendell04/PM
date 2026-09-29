@@ -26,7 +26,7 @@ const RANGE_OPTIONS   = [{ value: 'all', label: 'All time' }, { value: 'week', l
  * Settings > Backups. When the last good backup was made, where it is, and a button to make one now.
  * A copy kept only on the server does not count: Railway wipes that disk on every deploy.
  */
-export default function BackupsPanel({ token }) {
+export default function BackupsPanel({ token, developer = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -143,9 +143,11 @@ export default function BackupsPanel({ token }) {
           <PaginationBar total={data.total} page={page} perPage={perPage} onPage={setPage} onPerPage={(n) => { setPerPage(n); setPage(1); }} />
         )}
 
+        {/* Restoring is a server command, so the owner is told who to ask; the command is for the developer. */}
         <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-          To restore, a developer runs <code>php artisan db:restore NAME --into=personalizeme_restore</code>. It restores into a separate
-          database for checking first and never overwrites the live one.
+          {developer
+            ? <>To restore, run <code>php artisan db:restore NAME --into=personalizeme_restore</code> in the Railway console. It restores into a separate database for checking first and never overwrites the live one.</>
+            : 'If records are ever lost or damaged, contact the system developer to restore a backup. A restore goes into a separate copy for checking first and never overwrites your live data.'}
         </p>
       </div>
     </div>
