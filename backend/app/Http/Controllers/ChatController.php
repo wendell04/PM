@@ -39,9 +39,22 @@ class ChatController extends Controller
             $existingParticipantIds = [];
             $standardized = [];
 
+            // Looked up once for the whole list. Each thread used to fetch its user and count its unread
+            // messages on its own - two round trips per thread, 80-plus for the shop inbox, which is why
+            // the list sat on a spinner.
+            $me = (string) $user->_id;
+            $otherIdOf = fn ($c) => collect($c->participants)->filter(fn ($id) => (string) $id !== $me && (string) $id !== (string) $shopId)->first();
+            $usersById = User::whereIn('_id', $conversations->map($otherIdOf)->filter()->map(fn ($id) => (string) $id)->unique()->values()->all())
+                ->get()->keyBy(fn ($u) => (string) $u->_id);
+            $unreadBy = Message::whereIn('conversation_id', $conversations->map(fn ($c) => (string) $c->_id)->values()->all())
+                ->whereNotIn('sender_id', array_values(array_filter([$me, $shopId])))
+                ->where('is_read', false)
+                ->get(['conversation_id'])
+                ->countBy(fn ($m) => (string) $m->conversation_id);
+
             foreach ($conversations as $c) {
-                $otherId = collect($c->participants)->filter(fn($id) => (string)$id !== (string)$user->_id && (string)$id !== (string)$shopId)->first();
-                $other = User::find($otherId);
+                $otherId = $otherIdOf($c);
+                $other = $otherId ? ($usersById[(string) $otherId] ?? null) : null;
                 // The shared inbox is the shop's CUSTOMER conversations. A thread between the shop
                 // account and a member of staff is a private one - only the people in it see it.
                 $readerIn = in_array((string) $user->_id, array_map('strval', (array) $c->participants), true);
@@ -54,10 +67,7 @@ class ChatController extends Controller
                     'participants'    => $c->participants,
                     'last_message'    => $c->last_message ?? 'No messages yet',
                     'last_message_at' => $c->last_message_at ? $c->last_message_at->toIso8601String() : null,
-                    'unread_count'    => Message::where('conversation_id', (string)$c->_id)
-                                            ->whereNotIn('sender_id', array_values(array_filter([(string)$user->_id, $shopId])))
-                                            ->where('is_read', false)
-                                            ->count(),
+                    'unread_count'    => (int) ($unreadBy[(string) $c->_id] ?? 0),
                     'other_user'      => $other ? [
                         'id'          => (string)$other->_id,
                         // A customer is talking to the shop, whoever on the team holds the account.
@@ -69,7 +79,17 @@ class ChatController extends Controller
                         'avatar'      => $other->avatar,
                         'role'        => $other->role,
                         'last_seen_at' => $other->last_seen_at ? $other->last_seen_at->toIso8601String() : null,
-                    ] : $this->guestParty($c),
+                    ] : ($readerIn && $shopId && $me !== $shopId && in_array($shopId, array_map('strval', (array) $c->participants), true)
+                        // A member of staff shopping as a customer: their own thread is with the shop,
+                        // and naming the other side by customer fell through to "Guest".
+                        ? [
+                            'id'           => $shopId,
+                            'name'         => \App\Support\ChatAccess::shopDisplayName(),
+                            'avatar'       => null,
+                            'role'         => 'admin',
+                            'last_seen_at' => null,
+                        ]
+                        : $this->guestParty($c)),
                 ];
             }
 
