@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { CustomSelect, PaginationBar } from '@/app/dashboard/business/inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -17,6 +18,10 @@ const STATUS = {
   running:    { label: 'Running',        fg: 'var(--gray)',         bg: 'var(--dark)' },
 };
 
+const STATUS_OPTIONS  = [{ value: 'all', label: 'All results' }, { value: 'ok', label: 'Saved to cloud' }, { value: 'local_only', label: 'Server only' }, { value: 'failed', label: 'Failed' }];
+const TRIGGER_OPTIONS = [{ value: 'all', label: 'Nightly and manual' }, { value: 'schedule', label: 'Nightly' }, { value: 'manual', label: 'Manual' }];
+const RANGE_OPTIONS   = [{ value: 'all', label: 'All time' }, { value: 'week', label: 'Last 7 days' }, { value: 'month', label: 'Last 30 days' }];
+
 /**
  * Settings > Backups. When the last good backup was made, where it is, and a button to make one now.
  * A copy kept only on the server does not count: Railway wipes that disk on every deploy.
@@ -26,18 +31,26 @@ export default function BackupsPanel({ token }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
+  const [status, setStatus] = useState('all');
+  const [trigger, setTrigger] = useState('all');
+  const [range, setRange] = useState('all');
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/backups`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }, 20000);
+      const qs = new URLSearchParams({ status, trigger, range, page: String(page), perPage: String(perPage) });
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/backups?${qs}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }, 20000);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.message || 'Could not load backups.');
       setData(d.data ?? d);
       setError('');
     } catch (e) { setError(e.message); }
-  }, [token]);
+  }, [token, status, trigger, range, page, perPage]);
 
   useEffect(() => { if (token) load(); }, [token, load]);
+  const filterBy = (set) => (v) => { set(v); setPage(1); };
+  const filtered = status !== 'all' || trigger !== 'all' || range !== 'all';
 
   const runNow = async () => {
     setBusy(true); setNote(null);
@@ -86,6 +99,18 @@ export default function BackupsPanel({ token }) {
         )}
         {note && <div style={{ fontSize: '0.82rem', color: note.ok ? 'var(--st-green-fg)' : 'var(--st-red-fg)' }}>{note.text}</div>}
 
+        {data && (data.total > 0 || filtered) && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <CustomSelect value={status} onChange={filterBy(setStatus)} options={STATUS_OPTIONS} style={{ width: 160 }} />
+            <CustomSelect value={trigger} onChange={filterBy(setTrigger)} options={TRIGGER_OPTIONS} style={{ width: 180 }} />
+            <CustomSelect value={range} onChange={filterBy(setRange)} options={RANGE_OPTIONS} style={{ width: 150 }} />
+            <span style={{ fontSize: '0.76rem', color: 'var(--gray)', marginLeft: 'auto' }}>{data.total} run{data.total !== 1 ? 's' : ''}</span>
+          </div>
+        )}
+        {data && data.total === 0 && filtered && (
+          <div style={{ fontSize: '0.82rem', color: 'var(--gray)', padding: '0.5rem 0' }}>No backups match these filters.</div>
+        )}
+
         {data?.runs?.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
@@ -113,6 +138,9 @@ export default function BackupsPanel({ token }) {
               </tbody>
             </table>
           </div>
+        )}
+        {data?.total > 0 && (
+          <PaginationBar total={data.total} page={page} perPage={perPage} onPage={setPage} onPerPage={(n) => { setPerPage(n); setPage(1); }} />
         )}
 
         <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--gray)', lineHeight: 1.6 }}>

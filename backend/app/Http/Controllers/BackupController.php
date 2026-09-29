@@ -20,12 +20,33 @@ class BackupController extends Controller
         return Rbac::isSuperAdmin($u) || Rbac::isOwner($u);
     }
 
-    /** GET /api/admin/backups */
+    /**
+     * GET /api/admin/backups?status=&trigger=&range=&page=&perPage=
+     * The run log grows by one a night plus every manual run, so the list is filtered and paged here.
+     */
     public function index(Request $request)
     {
         if (!$this->allowed($request)) return $this->unauthorizedResponse();
 
-        $runs = BackupRun::orderBy('startedAt', 'desc')->limit(10)->get()->map(fn ($r) => [
+        $status  = (string) $request->query('status', 'all');
+        $trigger = (string) $request->query('trigger', 'all');
+        $range   = (string) $request->query('range', 'all');
+        $perPage = in_array((int) $request->query('perPage'), [10, 25, 50], true) ? (int) $request->query('perPage') : 10;
+        $page    = max(1, min(1000, (int) $request->query('page', 1)));
+
+        $query = BackupRun::query();
+        if (in_array($status, ['ok', 'local_only', 'failed'], true)) $query->where('status', $status);
+        if ($trigger === 'manual') $query->where('trigger', 'manual');
+        if ($trigger === 'schedule') $query->where('trigger', '!=', 'manual');
+        $since = match ($range) {
+            'week'  => now()->subDays(7),
+            'month' => now()->subDays(30),
+            default => null,
+        };
+        if ($since) $query->where('startedAt', '>=', $since);
+
+        $total = (clone $query)->count();
+        $runs = $query->orderBy('startedAt', 'desc')->skip(($page - 1) * $perPage)->take($perPage)->get()->map(fn ($r) => [
             'id'          => (string) $r->_id,
             'name'        => $r->name,
             'status'      => $r->status,
@@ -47,6 +68,9 @@ class BackupController extends Controller
             'keepDays'        => 30,
             'lastGood'        => $lastGood?->finishedAt?->toIso8601String(),
             'runs'            => $runs,
+            'total'           => $total,
+            'page'            => $page,
+            'perPage'         => $perPage,
         ]);
     }
 
