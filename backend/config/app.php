@@ -101,6 +101,10 @@ return [
 
     'key' => env('APP_KEY'),
 
+    // Encrypts database backups. Separate from APP_KEY so rotating APP_KEY does not lock you out of
+    // older backups. Falls back to APP_KEY when unset.
+    'backup_key' => env('BACKUP_KEY'),
+
     'previous_keys' => [
         ...array_filter(
             explode(',', (string) env('APP_PREVIOUS_KEYS', ''))

@@ -68,20 +68,20 @@ class HealthController extends Controller
             $checks['paymongo'] = ['status' => 'unreachable'];
         }
 
-        // Backup storage - verify last backup is not too old (warn if > 25 hours)
-        $backupDir   = storage_path('backups');
-        $latestBackup = null;
-        if (is_dir($backupDir)) {
-            $files = glob("{$backupDir}/*.zip.enc");
-            if ($files) {
-                $latestBackup = max(array_map('filemtime', $files));
-            }
+        // Last backup, from the run log in the database. It used to look for files on the server's
+        // disk, which Railway wipes on every deploy, so it always said "never". A copy on the server
+        // only is not counted as a backup for the same reason.
+        try {
+            $last = \App\Models\BackupRun::where('status', 'ok')->orderBy('startedAt', 'desc')->first();
+            $age  = $last?->finishedAt ? (int) $last->finishedAt->diffInHours(now()) : null;
+            $checks['backup'] = [
+                'status'          => $age === null ? 'no_backup' : ($age > 25 ? 'stale' : 'ok'),
+                'last_backup_age' => $age !== null ? "{$age}h ago" : 'never',
+                'cloud'           => \App\Support\BackupArchive::cloudConfigured(),
+            ];
+        } catch (Throwable $e) {
+            $checks['backup'] = ['status' => 'unknown'];
         }
-        $backupAge    = $latestBackup ? now()->diffInHours(\Carbon\Carbon::createFromTimestamp($latestBackup)) : null;
-        $checks['backup'] = [
-            'status'          => $backupAge === null ? 'no_backup' : ($backupAge > 25 ? 'stale' : 'ok'),
-            'last_backup_age' => $backupAge !== null ? "{$backupAge}h ago" : 'never',
-        ];
 
         $status = $allOk ? 200 : 503;
 

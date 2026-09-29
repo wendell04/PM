@@ -14,6 +14,7 @@ import { CustomSelect } from './../inventory-v2/shared';
 import OrderForms from './OrderForms';
 import { fetchRegions, fetchProvinces, fetchCities, fetchBarangays, isNCR } from '@/lib/psgc';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import BackupsPanel from '@/components/dashboard/BackupsPanel';
 import ImageCropper from '@/components/ImageCropper';
 
 // Google Places (New) - best PH landmark coverage for the store-location search. Falls back to OSM when unset/failed.
@@ -179,6 +180,7 @@ export default function SettingsPage() {
   const GRANTABLE_TABS = ['shipping', 'chat', 'orderforms'];
   const tabAllowed = (id) => GRANTABLE_TABS.includes(id) ? seesShop
     : id === 'integrations' ? isSystemAdmin
+    : id === 'backups' ? ownsShop
     : id === 'terms' ? ownsShop
     : true;
   const shopReadOnly = GRANTABLE_TABS.includes(activeTab) && !worksShop;
@@ -186,7 +188,7 @@ export default function SettingsPage() {
   // Other modules link straight to a tab (Messages -> ?tab=chat), so the owner never has to hunt for it.
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get('tab');
-    if (['profile', 'security', 'shipping', 'chat', 'orderforms', 'integrations', 'terms', 'notifications', 'appearance'].includes(wanted)
+    if (['profile', 'security', 'shipping', 'chat', 'orderforms', 'integrations', 'backups', 'terms', 'notifications', 'appearance'].includes(wanted)
         && tabAllowed(wanted)) {
       setActiveTab(wanted);
     }
@@ -1217,6 +1219,7 @@ export default function SettingsPage() {
               // shop shares, not one conversation, so they live here and not in the chat.
               { id: 'orderforms', label: 'Order forms' },
               { id: 'integrations', label: 'Integrations' },
+              { id: 'backups', label: 'Backups' },
               // Its own tab, not a sidebar entry: the sidebar is the daily work rail (orders, POS,
               // production) and putting rarely-touched configuration in it dilutes the things people
               // actually reach for. Settings is where configuration lives.
@@ -1810,6 +1813,8 @@ export default function SettingsPage() {
 )}
 
           {activeTab === 'orderforms' && <OrderForms token={token} />}
+
+          {activeTab === 'backups' && <BackupsPanel token={token} />}
 
           {activeTab === 'integrations' && (
   <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>

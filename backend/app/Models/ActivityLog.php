@@ -65,6 +65,7 @@ class ActivityLog extends Model
         'user.updated'             => ['Changed an account',      'people'],
         'user.role_changed'        => ['Changed a role',          'people'],
         'user.deactivated'         => ['Deactivated staff',       'people'],
+        'backup.run'               => ['Ran a backup',            'settings'],
         'user.reactivated'         => ['Reactivated staff',       'people'],
         'user.deleted'             => ['Deleted an account',      'people'],
         'user.unlocked'            => ['Unlocked an account',     'people'],

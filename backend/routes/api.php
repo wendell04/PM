@@ -211,6 +211,9 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::put('/admin/role-permissions/{role}',     [RolePermissionController::class, 'update']);
     Route::delete('/admin/role-permissions/{role}',  [RolePermissionController::class, 'destroy']);
 // ─── Access (new) ── staff + per-person permissions; replaces Staff + Permissions ──
+    // Database backups: last runs, and run one now. The controller checks system admin / owner.
+    Route::get('/admin/backups',                          [\App\Http\Controllers\BackupController::class, 'index']);
+    Route::post('/admin/backups/run',                     [\App\Http\Controllers\BackupController::class, 'run'])->middleware('throttle:3,1');
     Route::get('/admin/access/catalog',                   [AccessController::class, 'catalog']);
     Route::get('/admin/access/staff',                     [AccessController::class, 'staff']);
     Route::post('/admin/access/staff',                    [AccessController::class, 'createStaff']);
