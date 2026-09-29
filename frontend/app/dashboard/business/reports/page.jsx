@@ -39,14 +39,28 @@ const pct  = (now, before) => {
 };
 
 // The report as a real PDF from the server (A4, same numbers). Print still works for the browser way.
-async function downloadPdf(token, type, params, setBusy, setError) {
+// Download and Print both use the server's PDF, so what is printed is exactly what is downloaded
+// (printing the page itself took the sidebar, buttons and screen layout along).
+async function downloadPdf(token, type, params, setBusy, setError, mode = 'download') {
   setBusy(true);
   try {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     const res = await fetch(`${API_URL}/api/admin/reports/${type}/pdf${qs}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' } });
-    if (!res.ok) throw new Error('Could not make the PDF. Try again.');
+    if (!res.ok) throw new Error(mode === 'print' ? 'Could not prepare the report for printing. Try again.' : 'Could not make the PDF. Try again.');
     const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || `${type}-report.pdf`;
-    const url = URL.createObjectURL(await res.blob());
+    const url = URL.createObjectURL(new Blob([await res.blob()], { type: 'application/pdf' }));
+    if (mode === 'print') {
+      const frame = document.createElement('iframe');
+      frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+      frame.src = url;
+      frame.onload = () => {
+        try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+        catch { window.open(url, '_blank', 'noopener'); }   // a browser that will not print a framed PDF opens it instead
+        setTimeout(() => { frame.remove(); URL.revokeObjectURL(url); }, 60000);
+      };
+      document.body.appendChild(frame);
+      return;
+    }
     const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   } catch (e) {
@@ -271,7 +285,7 @@ function SalesReport({ token }) {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {mayExport && (<button type="button" onClick={exportRows} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>)}
           <button type="button" onClick={() => downloadPdf(token, 'sales', { from: range.from, to: range.to, bucket }, setPdfBusy, setError)} disabled={!data || pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>{pdfBusy ? 'Making PDF...' : 'Download PDF'}</button>
-          <button type="button" onClick={() => window.print()} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
+          <button type="button" onClick={() => downloadPdf(token, 'sales', { from: range.from, to: range.to, bucket }, setPdfBusy, setError, 'print')} disabled={!data || pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
         </div>
       </div>
 
@@ -430,7 +444,7 @@ function InventoryReport({ token }) {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {mayExport && (<button type="button" onClick={exportRows} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>)}
           <button type="button" onClick={() => { setPdfError(''); downloadPdf(token, 'inventory', null, setPdfBusy, setPdfError); }} disabled={pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>{pdfBusy ? 'Making PDF...' : 'Download PDF'}</button>
-          <button type="button" onClick={() => window.print()} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
+          <button type="button" onClick={() => { setPdfError(''); downloadPdf(token, 'inventory', null, setPdfBusy, setPdfError, 'print'); }} disabled={pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
         </div>
       </div>
       {isPhone ? <KpiStrip items={kpis} /> : (

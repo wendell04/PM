@@ -30,6 +30,14 @@ class ProfileController extends Controller
                 'address' => 'required|string|min:3|max:2000',
             ]);
 
+            // The email only moves through Change email (password + a code sent to the new address).
+            // Taking it here let anyone holding a signed-in session point the account at their own
+            // inbox and then reset the password: the classic takeover, with no way back for the owner.
+            if (strtolower((string) $user->email) !== strtolower(trim((string) $request->email))) {
+                return response()->json(['success' => false, 'message' => 'Use Change email to change your email address.',
+                    'errors' => ['email' => ['Use Change email to change your email address.']]], 422);
+            }
+
             // The rule above compares capitals exactly; this catches "Name@gmail.com" vs "name@gmail.com".
             $taken = User::emailIs($request->email)->where('_id', '!=', $user->_id)->exists();
             if ($taken) {
@@ -44,7 +52,6 @@ class ProfileController extends Controller
 
             $user->firstName   = $san($request->firstName);
             $user->lastName    = $san($request->lastName);
-            $user->email       = $request->email;
             $user->phoneNumber = $request->phoneNumber;
             $user->address     = $san($request->address);
             $user->save();
@@ -112,6 +119,127 @@ class ProfileController extends Controller
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred.');
         }
+    }
+
+    /**
+     * POST /profile/email - start changing the account's email: the current password, then a code
+     * sent to the NEW address. Nothing changes until the code comes back, so a typo or a stolen
+     * session cannot move the account.
+     */
+    public function requestEmailChange(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) return $this->unauthorizedResponse();
+            $request->validate([
+                'email'           => 'required|email:rfc|max:100',
+                'currentPassword' => 'required|string|max:255',
+            ]);
+            if (!Hash::check($request->currentPassword, $user->password)) {
+                return $this->errorResponse('Current password is incorrect.', 400);
+            }
+            $email = strtolower(trim((string) $request->email));
+            if ($email === strtolower((string) $user->email)) {
+                return $this->errorResponse('That is already your email.', 422);
+            }
+            if (User::emailIs($email)->where('_id', '!=', $user->_id)->exists()) {
+                return $this->errorResponse('That email is already used by another account.', 422);
+            }
+
+            $code = (string) random_int(100000, 999999);
+            $user->pendingEmail          = $email;
+            $user->pendingEmailCode      = hash('sha256', $code);
+            $user->pendingEmailExpiresAt = now()->addMinutes(15);
+            $user->pendingEmailAttempts  = 0;
+            $user->save();
+
+            \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\VerificationCodeMail($code, (string) $user->firstName));
+
+            return $this->successResponse("We sent a 6-digit code to {$email}. It works for 15 minutes.", ['email' => $email]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not send the code. Try again.');
+        }
+    }
+
+    /** POST /profile/email/confirm - the code from the new inbox moves the account there. */
+    public function confirmEmailChange(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) return $this->unauthorizedResponse();
+            $request->validate(['code' => 'required|digits:6']);
+
+            $clear = function () use ($user) {
+                $user->pendingEmail = $user->pendingEmailCode = $user->pendingEmailExpiresAt = $user->pendingEmailAttempts = null;
+                $user->save();
+            };
+            if (empty($user->pendingEmail) || empty($user->pendingEmailCode)) {
+                return $this->errorResponse('There is no email change waiting. Start again.', 422);
+            }
+            if (now()->greaterThan(\Carbon\Carbon::parse($user->pendingEmailExpiresAt))) {
+                $clear();
+                return $this->errorResponse('That code has expired. Start again.', 422);
+            }
+            if (!hash_equals((string) $user->pendingEmailCode, hash('sha256', (string) $request->code))) {
+                $tries = (int) ($user->pendingEmailAttempts ?? 0) + 1;
+                if ($tries >= 5) {
+                    $clear();
+                    return $this->errorResponse('Too many wrong codes. Start again.', 429);
+                }
+                $user->pendingEmailAttempts = $tries;
+                $user->save();
+                return $this->errorResponse('That code is not right. ' . (5 - $tries) . ' tries left.', 422);
+            }
+            $new = (string) $user->pendingEmail;
+            if (User::emailIs($new)->where('_id', '!=', $user->_id)->exists()) {
+                $clear();
+                return $this->errorResponse('That email is already used by another account.', 422);
+            }
+
+            $old = (string) $user->email;
+            $user->email       = $new;
+            $user->is_verified = true;
+            $clear();
+            // Every other device signs in again; this one stays.
+            $current = $user->currentAccessToken();
+            $currentId = $current && isset($current->id) ? (string) $current->id : null;
+            foreach ($user->tokens()->get() as $t) {
+                if ((string) $t->id !== $currentId) $t->delete();
+            }
+
+            // The old inbox hears about it: if this was not them, they know, and whom to call.
+            try {
+                \Illuminate\Support\Facades\Mail::to($old)->send(new \App\Mail\AccountSecurityAlertMail(
+                    (string) $user->firstName,
+                    'Your email address was changed',
+                    'Your account email was changed',
+                    'The email on your Personalize Me Prints account was changed to ' . self::mask($new) . '. If you did not do this, contact the shop right away so the account can be recovered.',
+                    (string) $request->ip(),
+                    now('Asia/Manila')->format('M j, Y g:i A')
+                ));
+            } catch (\Throwable $e) {
+                Log::warning('ProfileController@confirmEmailChange: old-address notice failed: ' . $e->getMessage());
+            }
+            $this->logActivity($request, 'auth.email_changed', 'auth', (string) $user->_id,
+                'Changed their email from ' . self::mask($old) . ' to ' . self::mask($new), ['from' => self::mask($old), 'to' => self::mask($new)]);
+
+            return $this->successResponse('Email changed. Other devices have been signed out.', ['email' => $new]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not change the email. Try again.');
+        }
+    }
+
+    /** "joshua@gmail.com" -> "j****a@gmail.com": enough to recognise, not enough to harvest. */
+    public static function mask(string $email): string
+    {
+        [$name, $domain] = array_pad(explode('@', $email, 2), 2, '');
+        $len = mb_strlen($name);
+        $shown = $len <= 2 ? mb_substr($name, 0, 1) . '*' : mb_substr($name, 0, 1) . str_repeat('*', $len - 2) . mb_substr($name, -1);
+        return $shown . '@' . $domain;
     }
 
     public function updateAvatar(Request $request)

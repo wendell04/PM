@@ -15,6 +15,7 @@ import OrderForms from './OrderForms';
 import { fetchRegions, fetchProvinces, fetchCities, fetchBarangays, isNCR } from '@/lib/psgc';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import BackupsPanel from '@/components/dashboard/BackupsPanel';
+import ChangeEmailButton from '@/components/ChangeEmailButton';
 import ImageCropper from '@/components/ImageCropper';
 
 // Google Places (New) - best PH landmark coverage for the store-location search. Falls back to OSM when unset/failed.
@@ -1371,7 +1372,12 @@ export default function SettingsPage() {
                     <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Email Address</div>
                     <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{profileForm.email || '-'}</div>
                   </div>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', color: 'var(--gray)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Locked</span>
+                  <ChangeEmailButton token={token} currentEmail={profileForm.email}
+                    onChanged={(newEmail, msg) => {
+                      setProfileForm(p => ({ ...p, email: newEmail }));
+                      setCurrentUser?.(u => (u ? { ...u, email: newEmail } : u));
+                      setSaveSuccess(msg || 'Email changed.');
+                    }} />
                 </div>
                 <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   {[{ label: 'Phone Number', value: profileForm.phoneNumber }, { label: 'Address', value: profileForm.address }].map(({ label, value }, i) => (
@@ -1405,7 +1411,7 @@ export default function SettingsPage() {
                     <input type="text" value={profileForm.lastName} onChange={e => setProfileForm(p => ({ ...p, lastName: e.target.value }))} placeholder="e.g., Dela Cruz" maxLength={64} autoComplete="family-name" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }} />
                   </div>
                   <div className="profile-form-field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Email Address <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>(cannot be changed)</span></label>
+                    <label>Email Address <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>(use Change email on your profile)</span></label>
                     <input type="email" value={profileForm.email} disabled readOnly tabIndex={-1} autoComplete="off" style={{ opacity: 0.5, cursor: 'not-allowed', background: 'var(--dark3)', userSelect: 'none' }}  maxLength={160}/>
                   </div>
                   <div className="profile-form-field">

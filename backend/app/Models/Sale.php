@@ -43,6 +43,9 @@ class Sale extends Model
         'costBackfilledAt',
     ];
 
+    // Sent on every sale, so an imported line (no `cost` field of its own) still shows its cost.
+    protected $appends = ['cost'];
+
     protected $casts = [
         'quantity'   => 'integer',
         'unitPrice'  => 'float',
@@ -67,6 +70,30 @@ class Sale extends Model
     public function inventory()
     {
         return $this->belongsTo(Inventory::class, 'inventoryId');
+    }
+
+    /**
+     * What the goods on this line cost. The imported sales history (2023-2025, from the owner's
+     * spreadsheet) carries it as totalCost / costPerUnit, the spreadsheet's own columns, not as
+     * `cost` - reading only `cost` showed every one of those 344 lines as "no cost" and all profit.
+     */
+    /** `cost` as every screen reads it, filled from the spreadsheet's columns on imported lines. */
+    public function getCostAttribute($value): float
+    {
+        // Serialising an appended attribute passes no value, so read the stored one.
+        $v = (float) ($this->attributes['cost'] ?? $value ?? 0);
+        if ($v > 0) return $v;
+        $tc = (float) ($this->attributes['totalCost'] ?? 0);
+        if ($tc > 0) return $tc;
+        return (float) ($this->attributes['costPerUnit'] ?? 0) * (float) ($this->attributes['quantity'] ?? 0);
+    }
+
+    public static function costOf($s): float
+    {
+        $cost = (float) ($s->cost ?? 0);
+        if ($cost > 0) return $cost;
+        if ((float) ($s->totalCost ?? 0) > 0) return (float) $s->totalCost;
+        return (float) ($s->costPerUnit ?? 0) * (float) ($s->quantity ?? 0);
     }
 
     public function scopeBySource($query, $source)

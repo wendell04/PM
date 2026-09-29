@@ -103,6 +103,9 @@ class User extends Authenticatable
         'reset_code_expires_at',
         'device_tokens',
         'totp_secret',
+        // Change email: the code's hash and its counters stay on the server.
+        'pendingEmailCode',
+        'pendingEmailAttempts',
     ];
 
     /**

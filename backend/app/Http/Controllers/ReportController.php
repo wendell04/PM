@@ -92,7 +92,8 @@ class ReportController extends Controller
         $view = [
             'd'           => $d,
             'title'       => $type === 'sales' ? 'Sales report' : 'Inventory report',
-            'subtitle'    => $type === 'sales' ? ($d['range']['label'] ?? '') : ('Stock as of ' . ($d['asOf'] ?? '')),
+            'subtitle'    => $type === 'sales' ? ($d['range']['label'] ?? '')
+                : ('Stock as of ' . (!empty($d['asOf']) ? CarbonImmutable::parse($d['asOf'], self::TZ)->format('M j, Y g:i A') : 'now')),
             'generatedAt' => CarbonImmutable::now(self::TZ)->format('M j, Y g:i A'),
             'generatedBy' => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: 'staff',
         ];
@@ -105,6 +106,10 @@ class ReportController extends Controller
             $dompdf->loadHtml(view('reports.pdf-' . $type, $view)->render(), 'UTF-8');
             $dompdf->setPaper('A4', 'portrait');
             $dompdf->render();
+            // "Page 1 of 2" on every page, bottom right, so a printed copy can be put back in order.
+            $canvas = $dompdf->getCanvas();
+            $canvas->page_text($canvas->get_width() - 110, $canvas->get_height() - 30, 'Page {PAGE_NUM} of {PAGE_COUNT}',
+                $dompdf->getFontMetrics()->getFont('DejaVu Sans'), 7.5, [0.54, 0.56, 0.63]);
         } catch (\Throwable $e) {
             return $this->serverErrorResponse($e, 'Could not make the PDF.');
         }
@@ -286,7 +291,7 @@ class ReportController extends Controller
         $rows = Sale::where('status', 'completed')
             ->where('saleDate', '>=', $from->utc())
             ->where('saleDate', '<=', $to->utc())
-            ->get(['saleId', 'saleDate', 'totalPrice', 'cost', 'profit', 'quantity', 'productName', 'category', 'source', 'notes', 'orderRef']);
+            ->get(['saleId', 'saleDate', 'totalPrice', 'cost', 'totalCost', 'costPerUnit', 'profit', 'quantity', 'productName', 'category', 'source', 'notes', 'orderRef']);
 
         $buckets = $this->emptyBuckets($from, $to, $bucket);
         $totals  = ['revenue' => 0.0, 'cost' => 0.0, 'profit' => 0.0, 'lines' => 0, 'units' => 0, 'costMissing' => 0];
@@ -308,7 +313,7 @@ class ReportController extends Controller
             [$key] = $this->bucketOf($when, $bucket);
             if (!isset($buckets[$key])) continue;   // a week/month bucket that starts before the range
             $rev  = (float) ($s->totalPrice ?? 0);
-            $cost = (float) ($s->cost ?? 0);
+            $cost = \App\Models\Sale::costOf($s);
             $oid  = self::orderKey($s);
 
             $b = &$buckets[$key];

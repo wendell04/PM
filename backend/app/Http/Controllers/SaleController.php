@@ -290,8 +290,9 @@ class SaleController extends Controller
                             $buckets[$key] = ['period' => $key, 'revenue' => 0, 'cost' => 0, 'profit' => 0];
                         }
                         $buckets[$key]['revenue'] += (float) ($sale->totalPrice ?? 0);
-                        $buckets[$key]['cost']    += (float) ($sale->cost       ?? 0);
-                        $buckets[$key]['profit']  += (float) ($sale->totalPrice ?? 0) - (float) ($sale->cost ?? 0);
+                        $lineCost = \App\Models\Sale::costOf($sale);
+                        $buckets[$key]['cost']    += $lineCost;
+                        $buckets[$key]['profit']  += (float) ($sale->totalPrice ?? 0) - $lineCost;
                     }
                     ksort($buckets);
                     $grouped = array_values($buckets);

@@ -16,6 +16,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import "../../../components/custom-styles.css";
 import AddressBook from "../../../components/profile/AddressBook";
+import ChangeEmailButton from "../../../components/ChangeEmailButton";
 import ImageCropper from "../../../components/ImageCropper";
 import { useAuth } from "../../../contexts/AuthContext";
 import "../shop.css";
@@ -2328,7 +2329,11 @@ export default function CustomerProfilePage() {
                             <div style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--gray)", marginBottom: "0.35rem" }}>Email Address</div>
                             <div style={{ fontSize: "0.925rem", fontWeight: 500, color: "var(--white)", overflowWrap: "anywhere" }}>{profileForm.email || "-"}</div>
                           </div>
-                          <span style={{ flexShrink: 0, fontSize: "0.65rem", fontWeight: 600, padding: "2px 8px", borderRadius: "999px", background: "rgba(255,255,255,0.05)", color: "var(--gray)", border: "1px solid var(--border)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Locked</span>
+                          <ChangeEmailButton token={token} currentEmail={profileForm.email} style={{ flexShrink: 0 }}
+                            onChanged={(newEmail) => {
+                              setProfileForm((prev) => ({ ...prev, email: newEmail }));
+                              updateUser({ email: newEmail });
+                            }} />
                         </div>
                         <div style={{ padding: "1rem 1.25rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
                           <div>
@@ -2366,7 +2371,7 @@ export default function CustomerProfilePage() {
                       </div>
                       <div>
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
-                          Email Address <span style={{ fontSize: "0.68rem", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(cannot be changed)</span>
+                          Email Address <span style={{ fontSize: "0.68rem", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(use Change email on your profile)</span>
                         </label>
                         <input type="email" value={profileForm.email} disabled style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark3)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.875rem", cursor: "not-allowed", opacity: 0.6, boxSizing: "border-box" }}  maxLength={160}/>
                       </div>

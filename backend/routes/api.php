@@ -118,6 +118,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // ─── Profile ─────────────────────────────────────────────────────────────
     Route::put('/profile',               [ProfileController::class, 'update']);
     Route::put('/profile/password',      [ProfileController::class, 'updatePassword']);
+    Route::post('/profile/email',        [ProfileController::class, 'requestEmailChange'])->middleware('throttle:5,10');
+    Route::post('/profile/email/confirm',[ProfileController::class, 'confirmEmailChange'])->middleware('throttle:10,10');
     Route::post('/profile/avatar',       [ProfileController::class, 'updateAvatar']);
     Route::post('/profile/upload-avatar',[ProfileController::class, 'uploadAvatar']);
     Route::delete('/profile',            [ProfileController::class, 'deleteAccount']);

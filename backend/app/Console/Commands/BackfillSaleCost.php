@@ -36,7 +36,10 @@ class BackfillSaleCost extends Command
         $apply = (bool) $this->option('apply');
         $rows  = Sale::where('status', 'completed')
             ->where(function ($q) { $q->whereNull('cost')->orWhere('cost', '<=', 0); })
-            ->get();
+            ->get()
+            // The imported history carries its cost as totalCost / costPerUnit (the owner's own
+            // figures); today's material price must never replace them.
+            ->filter(fn ($s) => (float) ($s->getAttributes()['totalCost'] ?? 0) <= 0 && (float) ($s->getAttributes()['costPerUnit'] ?? 0) <= 0);
 
         $byName  = [];                 // product name -> Product, looked up once
         $fixed   = 0;

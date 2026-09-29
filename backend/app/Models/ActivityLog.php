@@ -52,6 +52,8 @@ class ActivityLog extends Model
         'auth.2fa_failed'       => ['Failed 2FA',             'access'],
         'auth.password_reset'   => ['Reset a password',       'access'],
         'auth.password_changed' => ['Changed their password', 'access'],
+        'auth.email_changed'    => ['Changed their email',    'access'],
+        'owner.recovered'       => ['Recovered the owner account', 'people'],
         'auth.2fa_enabled'      => ['Turned 2FA on',          'access'],
         'auth.2fa_disabled'     => ['Turned 2FA off',         'access'],
         'auth.session_revoked'  => ['Signed a device out',    'access'],
