@@ -41,6 +41,8 @@ class SettingsController extends Controller
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
                 // Days a customer has to answer a proof before the order closes (terms: {proofReplyDays}).
                 'proofReplyDays'       => (int)   ($owner->proofReplyDays       ?? 14),
+                // Smallest online payment the checkout takes; a deposit under it is raised to it.
+                'minOnlinePayment'     => (float) max(20, (float) ($owner->minOnlinePayment ?? 100)),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
                 // cannot be resold, so this is a holding period ending in disposal, not a refund
@@ -310,6 +312,8 @@ class SettingsController extends Controller
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
                 // Days a customer has to answer a proof before the order closes (terms: {proofReplyDays}).
                 'proofReplyDays'       => (int)   ($owner->proofReplyDays       ?? 14),
+                // Smallest online payment the checkout takes; a deposit under it is raised to it.
+                'minOnlinePayment'     => (float) max(20, (float) ($owner->minOnlinePayment ?? 100)),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
                 // cannot be resold, so this is a holding period ending in disposal, not a refund
@@ -393,6 +397,8 @@ class SettingsController extends Controller
                 'productionLeadDays'   => 'nullable|integer|min:0|max:120',
                 'depositDueDays'       => 'nullable|integer|min:1|max:60',
                 'proofReplyDays'       => 'nullable|integer|min:3|max:60',
+                // PayMongo refuses anything under P20.
+                'minOnlinePayment'     => 'nullable|numeric|min:20|max:5000',
                 'unpaidOrderDays'      => 'nullable|integer|min:1|max:60',
                 'unpaidReadyHoldDays'  => 'nullable|integer|min:1|max:180',
                 'refundDays'           => 'nullable|integer|min:1|max:60',
@@ -439,6 +445,7 @@ class SettingsController extends Controller
             if ($request->has('productionLeadDays'))   $owner->productionLeadDays   = (int) $request->productionLeadDays;
             if ($request->has('depositDueDays'))       $owner->depositDueDays       = (int) $request->depositDueDays;
             if ($request->has('proofReplyDays'))       $owner->proofReplyDays       = (int) $request->proofReplyDays;
+            if ($request->has('minOnlinePayment'))     $owner->minOnlinePayment     = round((float) $request->minOnlinePayment, 2);
             if ($request->has('unpaidOrderDays'))      $owner->unpaidOrderDays      = (int) $request->unpaidOrderDays;
             if ($request->has('unpaidReadyHoldDays'))  $owner->unpaidReadyHoldDays  = (int) $request->unpaidReadyHoldDays;
             if ($request->has('refundDays'))           $owner->refundDays           = (int) $request->refundDays;
@@ -487,6 +494,8 @@ class SettingsController extends Controller
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
                 // Days a customer has to answer a proof before the order closes (terms: {proofReplyDays}).
                 'proofReplyDays'       => (int)   ($owner->proofReplyDays       ?? 14),
+                // Smallest online payment the checkout takes; a deposit under it is raised to it.
+                'minOnlinePayment'     => (float) max(20, (float) ($owner->minOnlinePayment ?? 100)),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
                 // cannot be resold, so this is a holding period ending in disposal, not a refund

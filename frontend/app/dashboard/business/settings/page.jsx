@@ -396,6 +396,7 @@ export default function SettingsPage() {
             maxRevisions:         d.data.maxRevisions         != null ? String(d.data.maxRevisions)         : '5',
             depositDueDays:       d.data.depositDueDays       != null ? String(d.data.depositDueDays)       : '7',
             proofReplyDays:       d.data.proofReplyDays       != null ? String(d.data.proofReplyDays)       : '14',
+            minOnlinePayment:     d.data.minOnlinePayment     != null ? String(d.data.minOnlinePayment)     : '100',
             unpaidOrderDays:      d.data.unpaidOrderDays      != null ? String(d.data.unpaidOrderDays)      : '3',
             unpaidReadyHoldDays:  d.data.unpaidReadyHoldDays  != null ? String(d.data.unpaidReadyHoldDays)  : '14',
             refundDays:           d.data.refundDays           != null ? String(d.data.refundDays)           : '7',
@@ -1111,6 +1112,7 @@ export default function SettingsPage() {
         maxRevisions:        Math.min(20, Math.max(1, parseInt(shippingForm.maxRevisions, 10) || 1)),
         depositDueDays:      Math.min(60, Math.max(1, parseInt(shippingForm.depositDueDays, 10) || 1)),
         proofReplyDays:      Math.min(60, Math.max(3, parseInt(shippingForm.proofReplyDays, 10) || 14)),
+        minOnlinePayment:    Math.min(5000, Math.max(20, parseInt(shippingForm.minOnlinePayment, 10) || 100)),
         unpaidOrderDays:     Math.min(60, Math.max(1, parseInt(shippingForm.unpaidOrderDays, 10) || 1)),
         unpaidReadyHoldDays: Math.min(180, Math.max(1, parseInt(shippingForm.unpaidReadyHoldDays, 10) || 14)),
         refundDays:          Math.min(60,  Math.max(1, parseInt(shippingForm.refundDays, 10) || 7)),
@@ -2414,6 +2416,27 @@ export default function SettingsPage() {
                   </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
                     How long an approved proof is held once the customer approves it. After this the order lapses and the reserved stock goes back.
+                  </p>
+                </div>
+
+                {/* Was a fixed P100 in the checkout code. PayMongo's own floor is P20; above that it is the
+                    shop's call, so it lives here. */}
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                  <div>
+                  <label htmlFor="set-min-online" style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
+                    Minimum online payment (PHP)
+                  </label>
+                  <input
+                    id="set-min-online" type="text" inputMode="numeric" maxLength={4}
+                    value={shippingForm.minOnlinePayment ?? ''}
+                    onChange={e => setShippingForm(f => ({ ...f, minOnlinePayment: e.target.value.replace(/[^0-9]/g, '') }))}
+                    placeholder="100"
+                    style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem', boxSizing: 'border-box' }}
+                  />
+                  </div>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+                    The smallest amount a customer can pay by GCash, Maya or card. A deposit under it is raised to it (never past the order total).
+                    Lowest allowed is 20, which is PayMongo&apos;s own minimum.
                   </p>
                 </div>
 

@@ -1072,7 +1072,14 @@ class PaymentController extends Controller
             $firstPayment = ($explicitFirst !== null && $explicitFirst > 0 && $explicitFirst < $totalAmount)
                 ? $explicitFirst
                 : (($dpPctRequested > 0 && $dpPctRequested < 100) ? round($totalAmount * $dpPctRequested / 100, 2) : null);
-            $takesDownpayment  = $payDownpaymentNow && $firstPayment !== null;
+            // The shop's minimum online payment (Settings, default P100; PayMongo's own floor is P20). A
+            // deposit under it (50% of P180 = P90) is raised to it, never past the total - the checkout
+            // shows the same figure and says why.
+            $minOnline = max(20.0, (float) (\App\Support\ShopSettings::owner()->minOnlinePayment ?? 100));
+            if ($firstPayment !== null && $firstPayment < $minOnline && $totalAmount >= $minOnline) {
+                $firstPayment = min($totalAmount, $minOnline);
+            }
+            $takesDownpayment  = $payDownpaymentNow && $firstPayment !== null && $firstPayment < $totalAmount;
 
             $isCustomOrder = filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN) || $anyCustom;
             // Uploaded artwork waits for the store to check it. Requested artwork has

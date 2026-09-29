@@ -544,9 +544,17 @@ export default function CheckoutPage() {
   })();
   const termsAgreedAt = termsItems.map(i => i.termsAgreedAt).filter(Boolean).sort()[0] || null;
 
-  const amountDue = designFeeOnly
+  const rawDue = designFeeOnly
     ? Math.max(0, Math.round(designFee * 100) / 100)
     : Math.max(0, Math.round((goodsPayNow + designFee + rushCharge + deliveryCharge - voucherDiscount - firstOrderDiscount) * 100) / 100);
+  // PayMongo will not take an online payment under P100. A 50% deposit on a P180 order is P90, and
+  // the checkout used to stop there with "add more items" - on an order that is P180. The deposit is
+  // raised to P100 instead (never past the order total), and the note below says why. The server
+  // applies the same floor to what it charges.
+  const MIN_ONLINE = Math.max(20, Number(storeSettings?.minOnlinePayment) || 100);
+  const onlineMethod = ['gcash', 'paymaya', 'card'].includes(paymentMethod);
+  const depositRaised = onlineMethod && !designFeeOnly && rawDue > 0 && rawDue < MIN_ONLINE && grandTotal >= MIN_ONLINE && rawDue < grandTotal;
+  const amountDue = depositRaised ? Math.min(grandTotal, MIN_ONLINE) : rawDue;
   const remainingBalance = Math.max(0, Math.round((grandTotal - amountDue) * 100) / 100);
   // "Downpayment" here means the CURRENT selection does not settle the whole order (drives the payload
   // + COD gating). It flips to false when Pay-in-Full clears the balance - correct, but the deposit UI
@@ -739,8 +747,8 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (isOnlinePayment && amountDue < 100) {
-      setError('Minimum payment amount is ₱100.00 for online payment. Please add more items.');
+    if (isOnlinePayment && amountDue < MIN_ONLINE) {
+      setError(`Online payments start at ₱${MIN_ONLINE.toFixed(2)}. Add more items, or choose Cash on Delivery if it is offered.`);
       return;
     }
 
@@ -1839,7 +1847,8 @@ export default function CheckoutPage() {
                   <strong>₱{amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>{' '}
                   now (deposit on your items{designFee > 0 ? ' + the design fee' : ''}; ready-made items in full). The remaining{' '}
                   <strong>₱{remainingBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>{' '}
-                  is collected before delivery. COD is not available.</>
+                  is collected before delivery. COD is not available.
+                  {depositRaised && <> Online payments start at ₱{MIN_ONLINE.toFixed(2)}, so the deposit is ₱{MIN_ONLINE.toFixed(2)} rather than ₱{rawDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.</>}</>
                 )}
               </div>
               <div style={{ display: 'flex', gap: '8px', marginTop: '0.6rem' }}>
@@ -1963,9 +1972,9 @@ export default function CheckoutPage() {
                   </div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.5 }}>
                     {opt.sub}
-                    {opt.id !== 'cod' && grandTotal < 100 && (
+                    {opt.id !== 'cod' && grandTotal < MIN_ONLINE && (
                       <span style={{ color: 'var(--red)', display: 'block', marginTop: '0.2rem' }}>
-                        Minimum ₱100.00 required.
+                        Minimum ₱{MIN_ONLINE.toFixed(2)} required.
                       </span>
                     )}
                   </div>
@@ -2119,8 +2128,8 @@ export default function CheckoutPage() {
             ? { text: 'Your cart is empty.', action: null }
             : !selectedAddress
               ? { text: 'Add a delivery address to place this order.', action: 'address' }
-              : (isOnlinePayment && grandTotal < 100)
-                ? { text: `GCash and Maya need at least ₱100.00. This order is ₱${grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - choose Cash on Delivery instead.`, action: null }
+              : (isOnlinePayment && grandTotal < MIN_ONLINE)
+                ? { text: `GCash and Maya need at least ₱${MIN_ONLINE.toFixed(2)}. This order is ₱${grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - choose Cash on Delivery instead.`, action: null }
                 : null;
         if (!blocker) return null;
         return (
@@ -2138,7 +2147,7 @@ export default function CheckoutPage() {
 
       <button
         onClick={handlePlaceOrder}
-        disabled={placing || placeUnknown || !selectedAddress || items.length === 0 || (isOnlinePayment && grandTotal < 100)}
+        disabled={placing || placeUnknown || !selectedAddress || items.length === 0 || (isOnlinePayment && grandTotal < MIN_ONLINE)}
         className="checkout-place-btn"
       >
         {placing ? (
