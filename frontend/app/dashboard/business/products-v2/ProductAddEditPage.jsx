@@ -853,21 +853,39 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
           onConfirm={uploadCroppedProduct} />
       )}
 
+      {/* Two columns on a desktop, one on a phone or tablet. The fixed 300px settings column left
+          the form a sliver on a phone, with the storefront preview laid over it. */}
+      <style>{`
+        .pae-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+        .pae-bar { max-width: 1200px; margin: 0 auto; padding: 10px 24px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .pae-crumb { display: flex; align-items: center; gap: 8px; min-width: 0; }
+        .pae-crumb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pae-actions { display: flex; gap: 8px; flex-shrink: 0; }
+        .pae-page { max-width: 1200px; margin: 0 auto; padding: 24px 24px 0; }
+        @media (max-width: 900px) {
+          .pae-grid { grid-template-columns: minmax(0, 1fr); }
+          .pae-page { padding: 16px 12px 0; }
+          .pae-bar { padding: 10px 12px; flex-wrap: wrap; }
+          .pae-crumb { flex: 1 1 100%; }
+          .pae-actions { flex: 1 1 100%; }
+          .pae-actions > button { flex: 1; justify-content: center; }
+        }
+      `}</style>
+
       {/* Sticky top bar */}
       <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--dark)', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '10px 24px',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="pae-bar">
+          <div className="pae-crumb">
             <button onClick={onCancel}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '13px', fontWeight: 600, padding: '4px 0' }}>
               Products
             </button>
             <span style={{ color: 'var(--border)', fontSize: '14px' }}>/</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)' }}>
+            <span className="pae-crumb-name" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)' }} title={isEdit ? product.name : undefined}>
               {isEdit ? product.name : 'Add Product'}
             </span>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="pae-actions">
             <button onClick={onCancel} style={S.btnGhost}>Cancel</button>
             <button onClick={handleSave} style={S.btnPrimary}>
               {ICONS.check} {isEdit ? 'Save Changes' : 'Add Product'}{form.isPublished ? '' : ' (draft)'}
@@ -877,10 +895,10 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       </div>
 
       {/* Page content */}
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 24px 0' }}>
+      <div className="pae-page">
         {/* minmax(0,1fr), not 1fr: a bare 1fr never shrinks below its content, so at a 1280 screen the
             left column pushed the settings column off the right edge and the page scrolled sideways. */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '20px', alignItems: 'start' }}>
+        <div className="pae-grid">
 
           {/* ───────── LEFT ───────── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
