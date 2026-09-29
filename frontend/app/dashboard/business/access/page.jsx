@@ -76,6 +76,7 @@ export default function AccessPage() {
   const confirmAsk = (opts) => new Promise(resolve => setAsk({ ...opts, resolve }));
   const [templates, setTemplates] = useState([]);
   const [staff,     setStaff]     = useState([]);
+  const [deactivated, setDeactivated] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState('');
   const [search,    setSearch]    = useState('');
@@ -104,7 +105,9 @@ export default function AccessPage() {
       const cd = await c.json(), sd = await s.json();
       setRows(cd?.data?.rows ?? {});
       setTemplates(cd?.data?.templates ?? []);
-      setStaff(sd?.data ?? []);
+      const all = sd?.data ?? [];
+      setStaff(all.filter(r => !r.deactivated));
+      setDeactivated(all.filter(r => r.deactivated));
     } catch (e) {
       setError(e.message || 'Could not load access settings.');
     } finally { setLoading(false); }
@@ -244,6 +247,24 @@ export default function AccessPage() {
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.message || d.error || 'Could not remove.');
       toast?.(d.message || `${row.firstName} is no longer staff.`, 'success');
+      await load();
+    } catch (e) { toast?.(e.message, 'error'); }
+  };
+
+  // Off the team but kept: the account turns into a customer account (orders, history and name on
+  // past work all stay) and the old role and ticks are kept for Reactivate.
+  const setActive = async (row, on) => {
+    const ok = await confirmAsk(on
+      ? { title: `Reactivate ${row.firstName}?`, message: `${row.firstName} gets back the ${row.roleLabel} role and the access they had before.`, confirmLabel: 'Reactivate', confirmStyle: 'primary' }
+      : { title: `Deactivate ${row.firstName}?`, message: `${row.firstName} is signed out and can no longer open the dashboard. The account stays as a customer account: they can still shop, and their name stays on the orders and logs they handled. You can reactivate them any time.`, confirmLabel: 'Deactivate' });
+    if (!ok) return;
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/access/staff/${row.id}/${on ? 'reactivate' : 'deactivate'}`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      }, 20000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || 'That did not work.');
+      toast?.(d.message || (on ? 'Reactivated.' : 'Deactivated.'), 'success');
       await load();
     } catch (e) { toast?.(e.message, 'error'); }
   };
@@ -517,6 +538,10 @@ export default function AccessPage() {
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          {/* Here as well as in the table row, so it can be done from a phone. */}
+          {!isNew && !editingRole && editing && !editing.unlimited && (
+            <button onClick={() => { const r = editing; setEditing(null); setActive(r, false); }} disabled={saving} style={{ ...S.btnGhost, marginRight: 'auto' }}>Deactivate</button>
+          )}
           <button onClick={() => { setEditing(null); setIsNew(false); setEditingRole(null); }} disabled={saving} style={S.btnGhost}>Cancel</button>
           <button onClick={save} disabled={saving} style={S.btnPrimary}>
             {saving ? 'Saving...' : editingRole ? 'Save role' : isNew ? 'Add and save access' : 'Save permissions'}
@@ -604,6 +629,7 @@ export default function AccessPage() {
                         {!r.unlimited && (
                           <span style={{ display: 'inline-flex', gap: 6 }}>
                             <button onClick={() => openEditor(r)} style={S.btnSmGhost}>Edit access</button>
+                            <button onClick={() => setActive(r, false)} style={S.btnSmGhost}>Deactivate</button>
                             <button onClick={() => removeStaff(r)} style={{ ...S.btnSmGhost, color: 'var(--st-red-fg, #dc2626)' }}>Remove</button>
                           </span>
                         )}
@@ -612,6 +638,23 @@ export default function AccessPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {!loading && deactivated.length > 0 && (
+            <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginTop: 18 }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>Deactivated ({deactivated.length})</div>
+                <div style={{ fontSize: 11.5, color: 'var(--gray)' }}>No dashboard access. Their accounts work as customer accounts; Reactivate restores the role and access they had.</div>
+              </div>
+              {deactivated.map((r, i) => (
+                <div key={r.id} style={{ ...S.rowBetween, padding: '10px 16px', borderTop: i ? '1px solid var(--border)' : 'none', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.firstName} {r.lastName} <span style={{ fontWeight: 400, color: 'var(--gray)', fontSize: 12 }}>was {r.roleLabel}</span></div>
+                    <div style={{ fontSize: 11.5, color: 'var(--gray)', overflowWrap: 'anywhere' }}>{r.email}</div>
+                  </div>
+                  <button onClick={() => setActive(r, true)} style={S.btnSmGhost}>Reactivate</button>
+                </div>
+              ))}
             </div>
           )}
           {/* Roles are templates: a starting set of ticks for a new person. Listed with who

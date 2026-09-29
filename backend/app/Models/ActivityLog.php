@@ -64,6 +64,8 @@ class ActivityLog extends Model
         'user.owner_created'       => ['Created the Owner',       'people'],
         'user.updated'             => ['Changed an account',      'people'],
         'user.role_changed'        => ['Changed a role',          'people'],
+        'user.deactivated'         => ['Deactivated staff',       'people'],
+        'user.reactivated'         => ['Reactivated staff',       'people'],
         'user.deleted'             => ['Deleted an account',      'people'],
         'user.unlocked'            => ['Unlocked an account',     'people'],
         'role.created'             => ['Created a role',          'people'],

@@ -71,10 +71,29 @@ class AccessController extends Controller
                     'lastLogin'   => $u->lastLogin,
                     // A customer's own account given staff access. Removing them hands it back.
                     'fromCustomer' => (bool) ($u->promotedFromCustomer ?? false),
+                    'deactivated'  => false,
                 ];
             })->values();
 
-        return $this->successResponse('Staff fetched.', $rows);
+        // Deactivated staff: customer accounts now, listed so they can be reactivated.
+        $off = User::where('role', 'customer')->whereNotNull('deactivatedRole')->orderBy('firstName')->get()
+            ->map(fn (User $u) => [
+                'id'            => (string) $u->_id,
+                'firstName'     => $u->firstName,
+                'lastName'      => $u->lastName,
+                'email'         => $u->email,
+                'role'          => 'customer',
+                'roleLabel'     => $this->humanRole($u->deactivatedRole),
+                'unlimited'     => false,
+                'source'        => 'template',
+                'permissions'   => [],
+                'lastLogin'     => $u->lastLogin,
+                'fromCustomer'  => (bool) ($u->deactivatedFromCustomer ?? false),
+                'deactivated'   => true,
+                'deactivatedAt' => $u->deactivatedAt,
+            ])->values();
+
+        return $this->successResponse('Staff fetched.', $rows->concat($off)->values());
     }
 
     /**
@@ -176,6 +195,78 @@ class AccessController extends Controller
             'permissions' => $grid,
             'source'      => $grid !== [] ? 'person' : 'template',
         ]);
+    }
+
+    /**
+     * POST /api/admin/access/staff/{id}/deactivate - take someone off the team without losing them.
+     *
+     * The account stays and becomes a customer account: they can still sign in and shop, their name
+     * stays on every order, job and log they touched, and the dashboard closes to them. Their role and
+     * ticks are kept aside so Reactivate puts them back exactly as they were. Deleting a person who
+     * leaves lost all of that.
+     */
+    public function deactivate(Request $request, $id)
+    {
+        if (!$this->hasPermission($request, 'userManagement.edit')) {
+            return $this->unauthorizedResponse();
+        }
+        $user = User::find($id);
+        if (!$user || ($user->role ?? 'customer') === 'customer') return $this->notFoundResponse('Staff member');
+        if (Rbac::isOwner($user) || Rbac::isSuperAdmin($user)) {
+            return $this->errorResponse('The owner and super admin cannot be deactivated.', 422);
+        }
+        if ((string) $user->_id === (string) $request->user()->_id) {
+            return $this->errorResponse('You cannot deactivate your own account.', 422);
+        }
+        if (Rbac::rank($request->user()->role) <= Rbac::rank($user->role)) {
+            return $this->errorResponse('You cannot deactivate someone at or above your own level.', 403);
+        }
+
+        $oldRole = $user->role;
+        $user->deactivatedRole         = $oldRole;
+        $user->deactivatedPermissions  = is_array($user->permissions ?? null) ? $user->permissions : null;
+        $user->deactivatedFromCustomer = (bool) ($user->promotedFromCustomer ?? false);
+        $user->deactivatedAt           = now();
+        $user->role                    = 'customer';
+        $user->permissions             = null;
+        $user->promotedFromCustomer    = null;
+        $user->save();
+        // Signed out everywhere, so an open tab does not keep showing the dashboard.
+        $user->tokens()->delete();
+        Cache::forget('admin_permissions_' . (string) $user->_id);
+
+        $this->logActivity($request, 'user.deactivated', 'user', (string) $user->_id,
+            "Deactivated {$user->email} ({$oldRole}); account kept as a customer",
+            ['email' => $user->email, 'from' => $oldRole, 'to' => 'customer']);
+
+        return $this->successResponse("{$user->firstName} is deactivated. They can still shop as a customer; Reactivate gives their access back.");
+    }
+
+    /** POST /api/admin/access/staff/{id}/reactivate - restore the role and ticks kept at deactivation. */
+    public function reactivate(Request $request, $id)
+    {
+        if (!$this->hasPermission($request, 'userManagement.edit')) {
+            return $this->unauthorizedResponse();
+        }
+        $user = User::find($id);
+        if (!$user || empty($user->deactivatedRole)) return $this->notFoundResponse('Deactivated staff member');
+        if (!Rbac::canAssignRole($request->user(), $user->deactivatedRole)) {
+            return $this->errorResponse('You cannot give back a role at or above your own level.', 403);
+        }
+
+        $role = $user->deactivatedRole;
+        $user->role                 = $role;
+        $user->permissions          = $user->deactivatedPermissions ?: null;
+        $user->promotedFromCustomer = ($user->deactivatedFromCustomer ?? false) ?: null;
+        $user->deactivatedRole = $user->deactivatedPermissions = $user->deactivatedFromCustomer = $user->deactivatedAt = null;
+        $user->save();
+        Cache::forget('admin_permissions_' . (string) $user->_id);
+
+        $this->logActivity($request, 'user.reactivated', 'user', (string) $user->_id,
+            "Reactivated {$user->email} as {$role}",
+            ['email' => $user->email, 'from' => 'customer', 'to' => $role]);
+
+        return $this->successResponse("{$user->firstName} is active again, with the access they had before.");
     }
 
     private function humanRole(?string $role): string

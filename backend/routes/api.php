@@ -215,6 +215,8 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::get('/admin/access/staff',                     [AccessController::class, 'staff']);
     Route::post('/admin/access/staff',                    [AccessController::class, 'createStaff']);
     Route::put('/admin/access/staff/{id}',                [AccessController::class, 'updateStaff']);
+    Route::post('/admin/access/staff/{id}/deactivate',    [AccessController::class, 'deactivate']);
+    Route::post('/admin/access/staff/{id}/reactivate',    [AccessController::class, 'reactivate']);
 
     Route::get('/admin/staff',                            [StaffController::class, 'index']);
     Route::post('/admin/staff',                           [StaffController::class, 'store']);
@@ -360,6 +362,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/sales/summary',           [SaleController::class, 'summary']);
     Route::get('/admin/reports/sales',           [ReportController::class, 'sales']);
     Route::get('/admin/reports/inventory',       [ReportController::class, 'inventory']);
+    Route::get('/admin/reports/{type}/pdf',      [ReportController::class, 'pdf'])->where('type', 'sales|inventory')->middleware('throttle:20,1');
     Route::get('/admin/sales/top-products',      [SaleController::class, 'topProducts']);
     Route::get('/admin/sales/{id}',              [SaleController::class, 'show']);
     Route::post('/admin/sales',                  [SaleController::class, 'store']);
