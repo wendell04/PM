@@ -1943,6 +1943,10 @@
           /* Two cards to a row leave no room for a stock badge and Print to order on one line;
              they ran into each other. The stock badge drops one line when both are there. */
           .has-custom-badge .shop-stock-img-badge { top: 28px; }
+          /* On a phone card there is room for one message up top. "Print to order" is the one that
+             changes how you buy; a plain stock count ("93-190 pcs") is on the product page, so it
+             steps aside. "Only 5 left" and "Out of stock" still show - those change the decision. */
+          .has-custom-badge .shop-stock-img-badge.in-stock { display: none; }
           .shop-sale-badge { font-size: 0.5rem; padding: 2px 6px; }
 
           /* Card → flex column so price aligns at the bottom across the row */

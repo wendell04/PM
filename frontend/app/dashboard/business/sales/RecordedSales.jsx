@@ -144,8 +144,9 @@ function RecordSaleModal({ token, catalog, editing, onClose, onSaved }) {
                 : <CustomSelect searchable value={it.productId ? `${it.productId}|${catalog.find(p => p.id === it.productId)?.variants.find(v => v.name === it.variantName)?.id ?? ''}` : ''}
                     onChange={v => pick(i, v)} options={options} />}
             </div>
-            {it.other && <div><label style={label}>Category</label>
-              <input value={it.category} maxLength={80} placeholder="e.g. Souvenirs" onChange={e => set(i, { category: e.target.value })} style={input} /></div>}
+            {it.other && <div><label style={label}>Category <span style={{ textTransform: 'none', fontWeight: 400 }}>(optional)</span></label>
+              {/* Suggests the shop's own categories so Reports does not end up with "Souvenir" and "Souvenirs". */}
+              <input value={it.category} maxLength={80} list="rs-categories" placeholder="Pick or type" onChange={e => set(i, { category: e.target.value })} style={input} /></div>}
             <div><label style={label}>Qty</label>
               <input inputMode="numeric" value={it.quantity} maxLength={6} onChange={e => { const q = e.target.value.replace(/\D/g, ''); const bp = !it.priceTouched ? bandPrice(it.bands, q) : null; set(i, bp != null ? { quantity: q, unitPrice: String(bp) } : { quantity: q }); }} style={input} /></div>
             <div><label style={label}>Price per unit</label>
@@ -159,6 +160,7 @@ function RecordSaleModal({ token, catalog, editing, onClose, onSaved }) {
           </div>
         </div>
       ))}
+      <datalist id="rs-categories">{[...new Set(catalog.map(p => p.category).filter(Boolean))].sort().map(c => <option key={c} value={c} />)}</datalist>
       {!editing && items.length < 50 && <button type="button" onClick={() => setItems(list => [...list, blank()])} style={btn}>+ Add item</button>}
       <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: 'var(--dark)', border: '1px solid var(--border)', display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 13 }}>
         <span>Total <b>{peso(total)}</b></span><span>Cost <b>{peso(cost)}</b></span>

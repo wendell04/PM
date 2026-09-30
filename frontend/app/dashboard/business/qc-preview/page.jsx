@@ -55,9 +55,11 @@ export default function QualityControlPage() {
 
   const checkedBy = (`${currentUser?.firstName ?? ''} ${currentUser?.lastName ?? ''}`.trim()) || currentUser?.email || 'QC';
 
-  const load = useCallback(async () => {
+  // quiet: refresh behind the rows on screen; the skeleton is for the first load only.
+  const load = useCallback(async ({ quiet = false } = {}) => {
     if (!token) return;
-    setLoading(true); setError('');
+    if (!quiet) setLoading(true);
+    setError('');
     try {
       const data = await fetchJobOrders(token);
       setJobs(Array.isArray(data) ? data : []);
@@ -97,13 +99,13 @@ export default function QualityControlPage() {
       }, token);
       setInspect(null);
       setScrapped([]);
-      await load();
+      load({ quiet: true });
     } catch (e) {
       // The job moving out of an inspectable state means someone already recorded this - a second
       // press, or another station. That is not a failure worth alarming anyone about; just resync.
       if (/Current status:|already/i.test(e.message || '')) {
         setInspect(null); setScrapped([]);
-        await load();
+        load({ quiet: true });
       } else {
         setError(e.message || 'QC submission failed');
       }

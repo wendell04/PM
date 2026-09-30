@@ -38,9 +38,12 @@ export default function ProductionPage() {
   const [detail, setDetail] = useState(null);
   const [preview, setPreview] = useState(null);
 
-  const load = useCallback(async () => {
+  // quiet: refresh behind the rows already on screen. The skeleton is for the first load only;
+  // swapping the whole table for grey bars after every Start / Send to QC made each click feel slow.
+  const load = useCallback(async ({ quiet = false } = {}) => {
     if (!token) return;
-    setLoading(true); setError('');
+    if (!quiet) setLoading(true);
+    setError('');
     try {
       const data = await fetchJobOrders(token);
       setJobs(Array.isArray(data) ? data : []);
@@ -84,9 +87,11 @@ export default function ProductionPage() {
     setBusyId(idOf(j)); setError('');
     try {
       await updateJobOrder(token, idOf(j), { joStatus, ...(materialOverride ? { materialOverride: true } : {}) });
+      // Saved: the row moves now and the dialog closes; the full list refreshes behind it.
+      setJobs(list => list.map(x => (idOf(x) === idOf(j) ? { ...x, joStatus } : x)));
       setConfirmAct(null);
       setShortage(null);
-      await load();
+      load({ quiet: true });
     } catch (e) {
       // Short material is a decision, not an error. Show what is missing and let the person at the
       // bench say whether they have it in hand - they are the only one who can know.
@@ -333,7 +338,7 @@ export default function ProductionPage() {
             if (!kind) { window.open(u, '_blank', 'noopener'); return; }
             setPreview({ url: u, kind });
           }}
-          onChanged={(updated) => { setDetail(updated); load(); }}
+          onChanged={(updated) => { setDetail(updated); load({ quiet: true }); }}
         />
       )}
       {preview && <ImageLightbox url={preview.url} kind={preview.kind} onClose={() => setPreview(null)} />}
