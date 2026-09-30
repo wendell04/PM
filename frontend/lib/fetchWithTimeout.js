@@ -70,7 +70,9 @@ function handleSessionExpired() {
       bc.close();
     } catch { /* BroadcastChannel unsupported */ }
   } catch { /* storage unavailable */ }
-  if (window.location.pathname !== '/') {
+  // The emailed pages (pay the balance, answer a proof) need no session: an expired one is cleared
+  // above, and the customer stays where they are instead of being sent to the home page.
+  if (window.location.pathname !== '/' && !/^\/(pay|proof)\//.test(window.location.pathname)) {
     window.location.href = '/';
   }
 }

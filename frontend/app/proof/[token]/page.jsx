@@ -24,6 +24,8 @@ export default function ProofPage({ params }) {
   const [busy,    setBusy]    = useState('');
   const [done,    setDone]    = useState('');
   const [payDue,  setPayDue]  = useState(false);
+  // The no-sign-in pay link, handed back once approved while a balance is owed online.
+  const [payUrl,  setPayUrl]  = useState(null);
   const [asking,  setAsking]  = useState(false);
   const [notes,   setNotes]   = useState('');
 
@@ -61,6 +63,7 @@ export default function ProofPage({ params }) {
       // Approved but nothing paid yet: production waits on them, and this page used to say it
       // could start - the last thing a customer reading it from their inbox should be told.
       setPayDue(String(d?.data?.orderStatus ?? '') === 'awaiting_payment');
+      setPayUrl(d?.data?.payUrl || null);
       setDone(decision);
     } catch (e) {
       setError(e.message);
@@ -87,13 +90,16 @@ export default function ProofPage({ params }) {
     <p className="pf-lede">
       {done === 'approve'
         ? (payDue
-          ? `We have your approval on ${data.orderRef}. One step left: pay in My Orders and production starts. We have emailed you the amount.`
+          ? `We have your approval on ${data.orderRef}. One step left: pay and production starts${payUrl ? ' - right here, no sign-in needed' : ' - in My Orders'}.`
           : `We have your approval on ${data.orderRef} and production can start. You will hear from us when it is ready.`)
         : `We have your notes on ${data.orderRef}. We will make the changes and send you a new proof.`}
     </p>
-    <a className={done === 'approve' && payDue ? 'pf-btn' : 'pf-btn ghost'} href="/shop/orders-history">
-      {done === 'approve' && payDue ? 'Pay in My Orders' : 'See the order'}
-    </a>
+    <div className="pf-actions">
+      {done === 'approve' && payUrl && <a className={payDue ? 'pf-btn' : 'pf-btn ghost'} href={payUrl}>{payDue ? 'Pay now' : 'Pay the balance now'}</a>}
+      <a className={done === 'approve' && payDue && !payUrl ? 'pf-btn' : 'pf-btn ghost'} href="/shop/orders-history">
+        {done === 'approve' && payDue && !payUrl ? 'Pay in My Orders' : 'See the order'}
+      </a>
+    </div>
   </>);
 
   if (data?.answered) return shell(<>
@@ -102,7 +108,10 @@ export default function ProofPage({ params }) {
       We have your reply on {data.orderRef} - nothing more is needed from you. If you want to
       change something, open the order and message us.
     </p>
-    <a className="pf-btn ghost" href="/shop/orders-history">Open the order</a>
+    <div className="pf-actions">
+      {data.payUrl && <a className="pf-btn" href={data.payUrl}>Pay the balance now</a>}
+      <a className="pf-btn ghost" href="/shop/orders-history">Open the order</a>
+    </div>
   </>);
 
   return shell(<>

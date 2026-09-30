@@ -983,6 +983,7 @@ class OrderController extends Controller
                         paid:      round($paid, 2),
                         balance:   $balance,
                         orderUrl:  $base !== '' ? $base . '/shop/orders-history?order=' . urlencode((string) $order->_id) : '',
+                        payUrl:    \App\Support\PayLink::url($order),
                     ));
                     $emailed = true;
                 } catch (\Throwable $e) {

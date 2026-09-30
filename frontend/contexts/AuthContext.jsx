@@ -63,7 +63,10 @@ export function AuthProvider({children}) {
                     setCurrentUser(null);
                     setToken(null);
                     setExpiresAt(null);
-                    window.location.href = '/';
+                    // The emailed links (pay the balance, answer a proof) need no session. An old,
+                    // expired sign-in on the same phone must not bounce the customer to the home page
+                    // on the way to paying - clear it and stay.
+                    if (!/^\/(pay|proof)\//.test(window.location.pathname)) window.location.href = '/';
                     return;
                 }
 

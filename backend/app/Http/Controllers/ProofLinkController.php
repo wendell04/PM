@@ -43,6 +43,9 @@ class ProofLinkController extends Controller
                 // Nothing paid for the goods yet: approving leads to a payment, not straight to the
                 // printer, and the page has to say which before the button is pressed.
                 'payFirst'     => ($order->paymentStatus ?? 'unpaid') === 'unpaid',
+                // Once approved, what is owed can be paid right here too - the same no-sign-in link
+                // the reminder email carries. Only while something is owed online.
+                'payUrl'       => $status === 'approved' ? $this->payUrlFor($order) : null,
                 'items'        => array_map(fn ($i) => [
                     'name'    => $i['productName'] ?? $i['name'] ?? '',
                     'variant' => $i['variantName'] ?? null,
@@ -90,8 +93,26 @@ class ProofLinkController extends Controller
         ]);
         $sub->setUserResolver(fn () => \App\Models\User::find((string) $order->userId));
 
-        return $validated['decision'] === 'approve'
-            ? $orders->approveAdminDesign($sub, (string) $order->_id)
-            : $orders->requestDesignRevision($sub, (string) $order->_id);
+        if ($validated['decision'] !== 'approve') {
+            return $orders->requestDesignRevision($sub, (string) $order->_id);
+        }
+        $res = $orders->approveAdminDesign($sub, (string) $order->_id);
+        if ($res->getStatusCode() < 300) {
+            // Approved and something is owed: hand back the pay link, so the page can offer it now.
+            $body = json_decode($res->getContent(), true) ?? [];
+            $body['data'] = array_merge((array) ($body['data'] ?? []), ['payUrl' => $this->payUrlFor(\App\Models\Order::find($order->_id))]);
+            return response()->json($body, $res->getStatusCode());
+        }
+        return $res;
+    }
+
+    /** The no-sign-in pay link, while there is a balance to pay online; null otherwise. */
+    private function payUrlFor(?\App\Models\Order $order): ?string
+    {
+        if (!$order || \App\Support\PaymentMethod::isCod($order->paymentMethod)) return null;
+        if (in_array(strtolower((string) ($order->orderStatus ?? '')), ['cancelled', 'returned'], true)) return null;
+        $paid = (float) collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0));
+        if (($order->paymentStatus ?? '') === 'paid' || (float) ($order->totalAmount ?? 0) - $paid <= 0) return null;
+        return \App\Support\PayLink::url($order) ?: null;
     }
 }

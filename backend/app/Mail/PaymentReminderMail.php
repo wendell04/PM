@@ -26,6 +26,7 @@ class PaymentReminderMail extends Mailable implements ShouldQueue
         public float $paid,
         public float $balance,
         public string $orderUrl,
+        public string $payUrl = '',
     ) {}
 
     public function envelope(): Envelope

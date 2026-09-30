@@ -43,4 +43,23 @@ final class PaymentMethod
 
         return $normal !== '' && in_array($normal, self::COD_ALIASES, true);
     }
+
+    /**
+     * The online methods the owner has left on (Payment Methods; a missing key means on), in the
+     * names PayMongo takes. Every checkout offers exactly these - the hosted checkouts used to list
+     * GCash, Maya and card always, so switching one off hid it from the cart but not from the page
+     * where the money was actually taken.
+     */
+    public static function enabledOnline(): array
+    {
+        $enabled = null;
+        try {
+            $row = \App\Models\SiteContent::where('key', 'payment_methods')->first();
+            $enabled = $row?->data['enabled'] ?? null;
+            if ($enabled instanceof \MongoDB\Model\BSONDocument) $enabled = $enabled->getArrayCopy();
+        } catch (\Throwable $e) { $enabled = null; }
+        $all = ['gcash', 'paymaya', 'card'];
+        if (!is_array($enabled)) return $all;
+        return array_values(array_filter($all, fn ($m) => ($enabled[$m] ?? true) !== false));
+    }
 }

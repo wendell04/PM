@@ -57,6 +57,10 @@ Route::post('/login',           [AuthController::class, 'login'])->middleware('t
 // approve artwork nobody had looked at.
 Route::get('/proof/{token}',          [ProofLinkController::class, 'show'])->middleware('throttle:60,1');
 Route::post('/proof/{token}/respond', [ProofLinkController::class, 'respond'])->middleware('throttle:20,1');
+// ─── Pay the balance by link (PUBLIC) ── the reminder email's "Pay now"; GET never charges ──
+Route::get('/pay/{token}',            [\App\Http\Controllers\PayLinkController::class, 'show'])->middleware('throttle:60,1');
+Route::post('/pay/{token}/checkout',  [\App\Http\Controllers\PayLinkController::class, 'checkout'])->middleware('throttle:10,1');
+Route::post('/pay/{token}/verify',    [\App\Http\Controllers\PayLinkController::class, 'verify'])->middleware('throttle:20,1');
 
 Route::post('/logout',          [AuthController::class, 'logout'])->middleware('auth:sanctum');
 // Aliases (tooling / documentation compatibility)

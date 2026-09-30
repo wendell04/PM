@@ -68,11 +68,13 @@ class PaymentController extends Controller
      */
     private function paymentMethodEnabled(string $type): bool
     {
-        $row     = SiteContent::where('key', 'payment_methods')->first();
-        $enabled = $row?->data['enabled'] ?? null;
-        if ($enabled instanceof \MongoDB\Model\BSONDocument) $enabled = $enabled->getArrayCopy();
-        if (!is_array($enabled)) return true;
-        return ($enabled[$type] ?? true) !== false;
+        if (\App\Support\PaymentMethod::isCod($type)) {
+            $row     = SiteContent::where('key', 'payment_methods')->first();
+            $enabled = $row?->data['enabled'] ?? null;
+            if ($enabled instanceof \MongoDB\Model\BSONDocument) $enabled = $enabled->getArrayCopy();
+            return !is_array($enabled) || (($enabled['cod'] ?? true) !== false);
+        }
+        return in_array($type, \App\Support\PaymentMethod::enabledOnline(), true);
     }
 
     /**
@@ -598,8 +600,11 @@ class PaymentController extends Controller
                                 })($order->userSnapshot['phone'] ?? ($validated['deliveryAddress']['phone'] ?? '')),
                             ],
                             'reference_number'     => (string) $orderId,
-                            'payment_method_types' => ['gcash', 'paymaya', 'card'],
+                            'payment_method_types' => \App\Support\PaymentMethod::enabledOnline(),
                             'line_items'           => $pmLineItems,
+                            // Checkout sessions read success_url; 'redirect' is the Links API's name and was ignored, so a
+                            // customer who paid stayed on PayMongo's page instead of coming back.
+                            'success_url' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
                             'redirect'    => [
                                 'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
                                 'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
@@ -1738,13 +1743,16 @@ class PaymentController extends Controller
                                 'phone' => $user->phoneNumber ?? '',
                             ],
                             'reference_number'     => $referenceNumber,
-                            'payment_method_types' => ['gcash', 'paymaya', 'card'],
+                            'payment_method_types' => \App\Support\PaymentMethod::enabledOnline(),
                             'line_items'           => [[
                                 'currency' => 'PHP',
                                 'amount'   => $amountInCentavos,
                                 'name'     => $description,
                                 'quantity' => 1,
                             ]],
+                            // Checkout sessions read success_url; 'redirect' is the Links API's name and was ignored, so a
+                            // customer who paid stayed on PayMongo's page instead of coming back.
+                            'success_url' => "{$frontendUrl}/shop/payment-success?id={$orderId}&type=order_request",
                             'redirect' => [
                                 'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}&type=order_request",
                                 'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}&type=order_request",
@@ -2187,7 +2195,11 @@ class PaymentController extends Controller
             $rawBody       = $request->getContent();
             $signedPayload = "{$timestamp}.{$rawBody}";
             $computedSig   = hash_hmac('sha256', $signedPayload, $webhookSecret);
-            $expectedSig   = app()->environment('production') ? $liveSig : $testSig;
+            // Which signature PayMongo sends follows the KEYS, not the server: test keys sign with
+            // "te" even in production, and choosing by environment rejected every webhook on a live
+            // site still running test keys - so payments were recorded only when the customer came
+            // back to the page.
+            $expectedSig   = str_starts_with((string) $this->secretKey, 'sk_live') ? $liveSig : $testSig;
 
             if (!hash_equals($computedSig, $expectedSig)) {
                 Log::warning('PayMongo webhook: invalid signature');
@@ -2267,6 +2279,16 @@ class PaymentController extends Controller
                 return response()->json(['received' => true]);
             }
 
+            // The same payment can reach us twice - here and through the customer's return page.
+            $webhookPaymentId = (string) ($data['id'] ?? '');
+            $seenPayment = $webhookPaymentId !== '' && (
+                (string) ($order->paymongoPaymentId ?? '') === $webhookPaymentId
+                || collect($order->paymentHistory ?? [])->contains(fn ($pmt) => (string) ($pmt['paymentId'] ?? '') === $webhookPaymentId
+                    || str_contains((string) ($pmt['note'] ?? ''), $webhookPaymentId)));
+            if ($seenPayment) {
+                return response()->json(['received' => true]);
+            }
+
             if ($order->paymentStatus !== 'paid') {
                 // Extract payment metadata from webhook payload
                 $paymentAttrs  = $data['attributes'] ?? [];
@@ -2286,6 +2308,7 @@ class PaymentController extends Controller
                     return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
                 }
 
+                $webhookGross = $paidAmount;
                 $paidAmount = $this->splitCourierPortion($order, $paidAmount, $paymentMethod, (string) ($paymentId ?? ''));
 
                 if ($isDesignFeeOnly) {
@@ -2337,6 +2360,7 @@ class PaymentController extends Controller
                     'amount'    => $paidAmount,
                     'method'    => $paymentMethod ?? 'online',
                     'note'      => 'Online payment via PayMongo' . ($referenceNum ? " ({$referenceNum})" : ''),
+                    'paymentId' => $paymentId,
                     'paidAt'    => now()->toDateTimeString(),
                 ];
                 $order->paymentHistory          = $prior;
@@ -2347,6 +2371,9 @@ class PaymentController extends Controller
                 \App\Support\DeliveryClock::restart($order, 'your payment');
                 $order->save();
                 CheckoutHold::confirm($order);
+                // The receipt, as the return page sends it. When this webhook arrived first the page
+                // found the payment already recorded and sent nothing, so the customer got no receipt.
+                $this->mailPaymentReceipt($order, $paidAmount, $paymentMethod, round($webhookGross - $paidAmount, 2), count($prior) - 1);
 
                 // Admin in-app notification
                 try {
@@ -2665,11 +2692,18 @@ class PaymentController extends Controller
                 $sessionStatus = $sessionData['attributes']['status'] ?? null;
                 $payments      = $sessionData['attributes']['payments'] ?? [];
 
-                if ($sessionStatus !== 'completed' || empty($payments)) {
+                // PayMongo leaves a paid checkout session at "active" and puts the payment in
+                // `payments`. Waiting for "completed" meant this never confirmed anything - every
+                // hosted-checkout payment waited on the webhook, and the page said "still confirming".
+                $paidPayments = array_values(array_filter((array) $payments, fn ($p) => ($p['attributes']['status'] ?? null) === 'paid'));
+                if ($sessionStatus !== 'completed' && empty($paidPayments)) {
+                    return $this->successResponse('Payment not yet confirmed.', ['paymentStatus' => $sessionStatus]);
+                }
+                if (empty($payments)) {
                     return $this->successResponse('Payment not yet confirmed.', ['paymentStatus' => $sessionStatus]);
                 }
 
-                $latestPayment   = $payments[0];
+                $latestPayment   = $paidPayments[0] ?? $payments[0];
                 $paymentId       = $latestPayment['id'] ?? null;
                 $payAttrs        = $latestPayment['attributes'] ?? [];
                 $paymentMethod   = $payAttrs['source']['type'] ?? $payAttrs['payment_method_type'] ?? 'online';
@@ -2688,8 +2722,13 @@ class PaymentController extends Controller
                 // from one payment ago.
                 // The only honest test of "already handled" is whether THIS intent is already in the
                 // history. It names one payment; the order's general state cannot tell them apart.
+                // One payment, one line: the webhook and this page can both see the same payment,
+                // so it is matched on PayMongo's own payment id (and this session) before recording.
                 $alreadyRecorded = collect($order->paymentHistory ?? [])
-                    ->contains(fn ($pmt) => $intentId && str_contains((string) ($pmt['note'] ?? ''), (string) $intentId));
+                    ->contains(fn ($pmt) => ($intentId && str_contains((string) ($pmt['note'] ?? ''), (string) $intentId))
+                        || ($paymentId && ((string) ($pmt['paymentId'] ?? '') === (string) $paymentId || str_contains((string) ($pmt['note'] ?? ''), (string) $paymentId)))
+                        || str_contains((string) ($pmt['note'] ?? ''), (string) $sessionId))
+                    || ($paymentId && (string) ($order->paymongoPaymentId ?? '') === (string) $paymentId);
 
                 if ($alreadyRecorded) {
                     CheckoutHold::confirm($order);
@@ -2764,7 +2803,7 @@ class PaymentController extends Controller
                     : (($order->paymentStatus ?? '') === 'paid' && count($order->paymentHistory ?? []) > 0 ? 'balance'
                     : (($order->paymentStatus ?? '') === 'partial' ? 'downpayment' : 'payment'));
 
-                $history[] = ['amount' => $paidAmount, 'method' => $paymentMethod, 'type' => $payFor, 'note' => 'Payment confirmed via PayMongo Checkout Session (' . $sessionId . ')', 'paidAt' => now()->toDateTimeString()];
+                $history[] = ['amount' => $paidAmount, 'method' => $paymentMethod, 'type' => $payFor, 'note' => 'Payment confirmed via PayMongo Checkout Session (' . $sessionId . ')', 'paymentId' => $paymentId, 'paidAt' => now()->toDateTimeString()];
                 $order->paymentDate       = now();
                 $order->paymentMethod     = $paymentMethod;
                 $order->paymongoPaymentId = $paymentId;
@@ -3248,6 +3287,12 @@ class PaymentController extends Controller
             $orderId        = (string) $order->_id;
             $frontendUrl    = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
             $paymentType    = $validated['paymentMethod'] ?? null;
+            if ($paymentType && !$this->paymentMethodEnabled($paymentType)) {
+                return $this->errorResponse('This payment method is currently unavailable. Please choose another.', 422);
+            }
+            if (!\App\Support\PaymentMethod::enabledOnline()) {
+                return $this->errorResponse('Online payment is turned off right now. Contact the shop to settle this order.', 422);
+            }
             $payFull        = filter_var($validated['payFull'] ?? true, FILTER_VALIDATE_BOOLEAN);
             $isDP           = false;
             $dpAmount       = 0.0;
@@ -3447,18 +3492,23 @@ class PaymentController extends Controller
                         'show_description'     => true,
                         'show_line_items'      => true,
                         'reference_number'     => $orderId,
-                        'payment_method_types' => ['gcash', 'paymaya', 'card'],
+                        'payment_method_types' => \App\Support\PaymentMethod::enabledOnline(),
                         'line_items' => [[
                             'currency' => 'PHP',
                             'amount'   => $amountCentavos,
                             'name'     => "Order #{$orderShortId}",
                             'quantity' => 1,
                         ]],
+                        // A payment started from the emailed pay link comes back to that page (it needs
+                        // no session). Set only server-side by PayLinkController, never from input.
+                        // Checkout sessions read success_url; 'redirect' is the Links API's name and was ignored, so a
+                        // customer who paid stayed on PayMongo's page instead of coming back.
+                        'success_url' => $request->attributes->get('pay_link_return')['success'] ?? "{$frontendUrl}/shop/payment-success?id={$orderId}",
                         'redirect' => [
-                            'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
-                            'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
+                            'success' => $request->attributes->get('pay_link_return')['success'] ?? "{$frontendUrl}/shop/payment-success?id={$orderId}",
+                            'failed'  => $request->attributes->get('pay_link_return')['failed'] ?? "{$frontendUrl}/shop/payment-failed?id={$orderId}",
                         ],
-                        'cancel_url' => "{$frontendUrl}/shop/orders-history?payment_cancelled=1",
+                        'cancel_url' => $request->attributes->get('pay_link_return')['cancel'] ?? "{$frontendUrl}/shop/orders-history?payment_cancelled=1",
                     ]],
                 ]);
 
