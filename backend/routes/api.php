@@ -376,6 +376,16 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/reports/inventory',       [ReportController::class, 'inventory']);
     Route::get('/admin/reports/{type}/pdf',      [ReportController::class, 'pdf'])->where('type', 'sales|inventory')->middleware('throttle:20,1');
     Route::get('/admin/sales/top-products',      [SaleController::class, 'topProducts']);
+    // Sales made outside the system: recorded by hand or imported. Declared before /admin/sales/{id}
+    // so "manual" is never read as a sale id. The controller checks sales.view / sales.record.
+    Route::get('/admin/sales/manual',                     [\App\Http\Controllers\ManualSaleController::class, 'index']);
+    Route::get('/admin/sales/manual/catalog',             [\App\Http\Controllers\ManualSaleController::class, 'catalog']);
+    Route::post('/admin/sales/manual',                    [\App\Http\Controllers\ManualSaleController::class, 'store'])->middleware('throttle:60,1');
+    Route::put('/admin/sales/manual/{id}',                [\App\Http\Controllers\ManualSaleController::class, 'update'])->middleware('throttle:60,1');
+    Route::delete('/admin/sales/manual/{id}',             [\App\Http\Controllers\ManualSaleController::class, 'destroy'])->middleware('throttle:60,1');
+    Route::post('/admin/sales/manual/import/check',       [\App\Http\Controllers\ManualSaleController::class, 'check'])->middleware('throttle:20,1');
+    Route::post('/admin/sales/manual/import',             [\App\Http\Controllers\ManualSaleController::class, 'import'])->middleware('throttle:10,1');
+    Route::post('/admin/sales/manual/import/{id}/undo',   [\App\Http\Controllers\ManualSaleController::class, 'undo'])->middleware('throttle:10,1');
     Route::get('/admin/sales/{id}',              [SaleController::class, 'show']);
     Route::post('/admin/sales',                  [SaleController::class, 'store']);
     Route::put('/admin/sales/{id}',              [SaleController::class, 'update']);

@@ -116,7 +116,10 @@ class PermissionCatalog
             'sales' => ['section' => 'Finance', 'label' => 'Sales', 'note' => 'Finance rows show revenue and what customers owe.',
                 'view'   => $v('sales.view', 'Revenue, profit and the sales list, read only.'),
                 'work'   => ['keys' => [], 'hint' => ''],
-                'extras' => ['sales.export' => ['Export sales', 'Download the sales list - it leaves the system.']]],
+                'extras' => [
+                    'sales.export' => ['Export sales', 'Download the sales list - it leaves the system.'],
+                    'sales.record' => ['Record and import sales', 'Add sales made outside the system, one by one or from a spreadsheet. They count in revenue and the forecast.'],
+                ]],
             'payments' => ['section' => 'Finance', 'label' => 'Payments', 'note' => '',
                 'view'   => $v('payments.view', 'Who paid and who still owes, read only.'),
                 'work'   => $v('payments.create', 'Record cash, GCash or bank money received, and send balance reminders.'),

@@ -28,7 +28,8 @@
     "react-leaflet": "^5.0.0",
     "recharts": "^3.8.1",
     "tailwind-merge": "^2.5.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.19.11",

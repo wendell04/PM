@@ -21,6 +21,7 @@ import { remainingDue, paidSoFar } from '@/lib/orderBalance';
 import { normalizeStatus } from '@/lib/orderStatus';
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { S, ICONS, SummaryCard, SearchBar, PaginationBar, EmptyState, CustomSelect } from '../inventory-v2/shared';
+import RecordedSales from './RecordedSales';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -692,6 +693,20 @@ export default function SalesListPage() {
     <ErrorBoundary>
       <div style={S.page}>
 
+        {/* Orders are the shop's own sales; Recorded by hand is what happened outside it (a missed
+            walk-in, an old spreadsheet). Two tabs, because one is read from orders and the other is
+            entered here - mixing them in one list would put an Edit button on an online order. */}
+        <div role="tablist" aria-label="Sales" style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 14 }}>
+          {[['list', 'Orders'], ['manual', 'Recorded by hand']].map(([id, name]) => (
+            <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
+              style={{ padding: '8px 16px', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                background: view === id ? 'var(--gold)' : 'var(--dark2)', color: view === id ? '#111' : 'var(--gray-light)' }}>{name}</button>
+          ))}
+        </div>
+
+        {view === 'manual' && <RecordedSales token={token} />}
+
+        {view === 'list' && (<>
         {/* Money first, then the status counts that also act as filters. Two rows rather than eight
             equal cards, so the eye lands on revenue instead of scanning a wall of numbers. */}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
@@ -778,6 +793,7 @@ export default function SalesListPage() {
             <span style={{ fontSize: '12px', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{filteredSales.length} sale{filteredSales.length !== 1 ? 's' : ''}</span>
           </div>
         </div>
+        </>)}
 
         {view === 'list' && (<>
         {/* Table */}

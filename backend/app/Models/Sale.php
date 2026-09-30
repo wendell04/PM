@@ -41,6 +41,15 @@ class Sale extends Model
         'orderRef',
         // Set by sales:backfill-cost on a row whose cost was filled in afterwards.
         'costBackfilledAt',
+        // Sales recorded by hand or imported (ManualSaleController). The spreadsheet's own column
+        // names are kept beside the app's, the same as the 2023-2025 history, so every reader agrees.
+        'salesChannel',
+        'pricePerUnit',
+        'costPerUnit',
+        'totalCost',
+        'importBatch',
+        'recordedById',
+        'recordedByName',
     ];
 
     // Sent on every sale, so an imported line (no `cost` field of its own) still shows its cost.
