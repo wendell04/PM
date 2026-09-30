@@ -4900,13 +4900,17 @@ html.light .shop-active-clear:hover { color: #111; }
     height: 4px;
     border-radius: 2px;
     background: rgba(0,0,0,0.18);
-    margin: 10px auto 4px;
+    /* A 48px header strip - the handle, and the close button beside it. Content scrolls below it,
+       so nothing (the Print to order badge, the notice) slides under the X any more. */
+    margin: 10px auto 34px;
   }
   .shop-qv-close {
-    top: 14px;
-    right: 14px;
-    background: rgba(255,255,255,0.85);
+    top: 8px;
+    right: 12px;
+    background: #fff;
   }
+  /* On the phone the X has its own strip, so the badge row goes back to the right edge. */
+  .shop-qv-headrow { padding-right: 0; }
   .shop-qv-body {
     flex-direction: column;
     flex: 1;
