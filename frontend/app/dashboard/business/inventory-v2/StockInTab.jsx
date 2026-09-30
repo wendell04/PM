@@ -1,10 +1,12 @@
 'use client';
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow , pesoShort } from '@/components/dashboard/phone';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
 import { inDateRange } from './StockOutHistoryTab';
 
+// Last 30 days first: "This month" is empty on the 1st of every month however busy the shop was.
 const STOCK_IN_RANGES = [
+  { value: '30',     label: 'Last 30 days' },
   { value: 'week',   label: 'This week' },
   { value: 'month',  label: 'This month' },
   { value: 'last',   label: 'Last month' },
@@ -14,6 +16,7 @@ const STOCK_IN_RANGES = [
 import { adjustStock, createReturn } from './api';
 import { useAccess } from '@/contexts/AccessContext';
 import { scrollToFirstError } from '@/lib/scrollToError';
+import { todayLocal } from '@/lib/localDate';
 
 const BO_TYPES = ['damaged','defective','shortage','wrong_item','expired'];
 
@@ -96,7 +99,9 @@ function CategoryCard({ group, expanded, onToggle, selectedIds, onToggleMat }) {
   );
 }
 
-export default function StockInTab({ materials, vendors, batches, setBatches, badOrders, setBadOrders, toast, token, onRefresh }) {
+// modalOnly + prefill: another page (To Buy) opens this same Receive Stock form, already filled
+// with what it says to buy, without the history around it.
+export default function StockInTab({ materials, vendors, batches, setBatches, badOrders, setBadOrders, toast, token, onRefresh, modalOnly = false, prefill = null, onClosed, onReceived }) {
   // Stock Work receives stock; watchers see the history. Peso figures follow the Finance rows -
   // except inside the receive form, where whoever receives has to enter what it cost.
   const { can } = useAccess();
@@ -112,7 +117,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
 
   // Step 2
   const [invoiceNo,      setInvoiceNo]      = useState('');
-  const [date,           setDate]           = useState(new Date().toISOString().split('T')[0]);
+  const [date,           setDate]           = useState(todayLocal());
   // When the order was placed with the vendor. Optional - a walk-in purchase has
   // no order behind it - but it is the only way a real lead time ever gets measured.
   const [orderedAt,      setOrderedAt]      = useState('');
@@ -123,20 +128,20 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
   const [errors2,        setErr2]           = useState({});
 
   const [histSearch, setHistSearch] = useState('');
-  // Opens on this month: the question on this page is usually "what came in lately", and the whole
-  // history summed into the cards (73 batches, P154k) answered a different one.
-  const [range, setRange] = useState('month');
+  // Opens on the last 30 days: the question on this page is usually "what came in lately", and the
+  // whole history summed into the cards (73 batches, P154k) answered a different one.
+  const [range, setRange] = useState('30');
   const [rangeFrom, setRangeFrom] = useState('');
   const [rangeTo,   setRangeTo]   = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const openModal = () => {
     setStep(1); setSelectedIds([]); setSearch1(''); setExpanded({});
-    setInvoiceNo(''); setDate(new Date().toISOString().split('T')[0]); setOrderedAt('');
+    setInvoiceNo(''); setDate(todayLocal()); setOrderedAt('');
     setVendorId(''); setSharedNotes(''); setShowAllVendors(false); setRows([]); setErr2({});
     setOpen(true);
   };
-  const closeModal = () => setOpen(false);
+  const closeModal = () => { setOpen(false); onClosed?.(); };
 
   // Group materials by category for Step 1
   const groupedByCategory = useMemo(() => {
@@ -171,22 +176,46 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
     return vendors.filter(v => (v.itemsSupplied || []).some(cat => selectedCategories.includes(cat)));
   }, [selectedCategories, vendors]);
 
-  const vendorList = showAllVendors ? vendors : relevantVendors;
+  // The chosen vendor always stays in the list: the material's own supplier may not be tagged with
+  // its category, and a filtered-out choice showed "Select vendor" while still being saved.
+  const vendorList = showAllVendors || !vendorId || relevantVendors.some(v => v.id === vendorId)
+    ? (showAllVendors ? vendors : relevantVendors)
+    : [...relevantVendors, ...vendors.filter(v => v.id === vendorId)];
 
   const goStep2 = () => {
     if (!selectedIds.length) return;
     setRows(selectedIds.map(id => ({ matId:id, qty:'', unitCost:'', totalCost:'', costMode:'unit', bos:[] })));
-
-    // Auto-detect preferred vendor: if all selected materials share exactly one vendor
-    const selectedMats = materials.filter(m => selectedIds.includes(m.id));
-    const vendorCounts = {};
-    selectedMats.forEach(m => { if (m.vendorId) vendorCounts[m.vendorId] = (vendorCounts[m.vendorId] || 0) + 1; });
-    const entries = Object.entries(vendorCounts);
-    setVendorId(entries.length === 1 && entries[0][1] === selectedMats.length ? entries[0][0] : '');
-
+    setVendorId(sharedVendor(selectedIds));
     setErr2({});
     setStep(2);
   };
+
+  // Auto-detect preferred vendor: if all selected materials share exactly one vendor
+  const sharedVendor = (ids) => {
+    const selectedMats = materials.filter(m => ids.includes(m.id));
+    const vendorCounts = {};
+    selectedMats.forEach(m => { if (m.vendorId) vendorCounts[m.vendorId] = (vendorCounts[m.vendorId] || 0) + 1; });
+    const entries = Object.entries(vendorCounts);
+    return entries.length === 1 && entries[0][1] === selectedMats.length ? entries[0][0] : '';
+  };
+
+  // Opened from To Buy: straight to the details with the materials, the suggested quantities and
+  // the last known cost filled in - all still editable, since the delivery is what counts.
+  useEffect(() => {
+    if (!prefill?.items?.length) return;
+    const items = prefill.items.filter(it => materials.some(m => m.id === it.matId));
+    if (!items.length) return;
+    openModal();
+    const ids = items.map(it => it.matId);
+    setSelectedIds(ids);
+    setRows(items.map(it => ({ matId: it.matId, qty: it.qty > 0 ? String(it.qty) : '', unitCost: Number(it.unitCost) > 0 ? String(it.unitCost) : '', totalCost:'', costMode:'unit', bos:[] })));
+    // The list names its supplier; fall back to the one the materials share.
+    const want = prefill.vendorId ? vendors.find(v => String(v.id) === String(prefill.vendorId)) : null;
+    const byName = !want && prefill.vendorName ? vendors.find(v => (v.name || '').trim().toLowerCase() === prefill.vendorName.trim().toLowerCase()) : null;
+    setVendorId((want || byName)?.id ?? sharedVendor(ids));
+    setStep(2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.key]);
 
   const validateStep2 = () => {
     const e = {};
@@ -259,6 +288,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
 
       await onRefresh(['materials', 'badOrders']);
       toast?.('Stock received successfully.', 'success');
+      onReceived?.(rows.map(r => ({ matId: r.matId, qty: Number(r.qty), name: materials.find(m => m.id === r.matId)?.name ?? '', unit: materials.find(m => m.id === r.matId)?.unit ?? '' })));
       closeModal();
     } catch (err) {
       toast?.(err.message ?? 'Failed to receive stock.', 'error');
@@ -302,9 +332,21 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
   const totalReceived = inRange.reduce((s, b) => s + b.qtyReceived, 0);
   const totalValue    = inRange.reduce((s, b) => s + b.qtyReceived * b.unitCost, 0);
   const rangeLabel    = (STOCK_IN_RANGES.find(r => r.value === range)?.label ?? '').toLowerCase();
+  // Empty because of the range, not because nothing was ever received: say when the last delivery
+  // was and offer the wider view, instead of a blank table that reads like missing data.
+  const lastBatch = sortedBatches[0];
+  const emptyHistory = histSearch.trim() && inRange.length > 0
+    ? <EmptyState message="No matches" sub="Nothing in this range matches the search." />
+    : lastBatch && range !== 'all'
+      ? <EmptyState message={`Nothing received - ${rangeLabel}`} sub={<>
+          Last delivery: {formatDate(lastBatch.date)}.{' '}
+          <button type="button" onClick={() => setRange('all')} style={{ background:'none', border:'none', padding:0, color:'var(--gold)', fontWeight:600, cursor:'pointer', font:'inherit' }}>Show all time</button>
+        </>} />
+      : <EmptyState message="No stock-in records" sub={mayWork ? "Receive stock to see records here." : "Nothing received yet."} />;
 
   return (
-    <div style={S.col}>
+    <div style={modalOnly ? undefined : S.col}>
+      {!modalOnly && (<>
       {isPhone ? (
         <>
           {mayWork && <button onClick={openModal} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.truck} Receive Stock</button>}
@@ -314,7 +356,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
             ...(seeMoney ? [{ key:'v', label:'Value in', value: pesoShort(totalValue), title: formatCurrency(totalValue) }] : []),
           ]} />
           <PhoneFilterBar search={histSearch} onSearch={setHistSearch} placeholder="Search invoice, material, vendor"
-            filters={[{ key:'range', label:'When', value:range, defaultValue:'month', onChange:setRange, options: STOCK_IN_RANGES }]}
+            filters={[{ key:'range', label:'When', value:range, defaultValue:'30', onChange:setRange, options: STOCK_IN_RANGES }]}
             note={`${hTotal} record${hTotal !== 1 ? 's' : ''} - ${rangeLabel}`} />
           {range === 'custom' && (
             <div style={{ display:'flex', gap:'8px' }}>
@@ -349,7 +391,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
       {isPhone ? (
         <>
           {hSlice.length === 0 ? (
-            <div style={{ ...S.card, padding:0 }}><EmptyState message="No stock-in records" sub={mayWork ? "Receive stock to see records here." : "Nothing received yet."} /></div>
+            <div style={{ ...S.card, padding:0 }}>{emptyHistory}</div>
           ) : (
             <PhoneList>
               {hSlice.map((b, i) => {
@@ -386,7 +428,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
             </thead>
             <tbody>
               {hSlice.length === 0 ? (
-                <tr><td colSpan={seeMoney ? 9 : 7}><EmptyState message="No stock-in records" sub={mayWork ? "Receive stock to see records here." : "Nothing received yet."} /></td></tr>
+                <tr><td colSpan={seeMoney ? 9 : 7}>{emptyHistory}</td></tr>
               ) : hSlice.map(b => {
                 const mat = materials.find(m => m.id === b.matId);
                 return (
@@ -411,9 +453,10 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
         </div>
       </div>
 
-      {/* Wizard modal */}
+      </>)}
       </>)}
 
+      {/* Wizard modal */}
       <Modal
         open={open}
         onClose={closeModal}
@@ -485,11 +528,11 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                 </Field>
                 <Field label="Received Date" required error={errors2.date}>
                   <input type="date" value={date} onChange={e => { setDate(e.target.value); setErr2(p=>({...p,date:''})); }}
-                    max={new Date().toISOString().split('T')[0]} style={errors2.date ? S.inputErr : S.input} />
+                    max={todayLocal()} style={errors2.date ? S.inputErr : S.input} />
                 </Field>
                 <Field label="Ordered On" hint="optional - lets the shop measure this vendor's lead time">
                   <input type="date" value={orderedAt} onChange={e => setOrderedAt(e.target.value)}
-                    max={date || new Date().toISOString().split('T')[0]} style={S.input} />
+                    max={date || todayLocal()} style={S.input} />
                 </Field>
                 <Field label="Vendor" required error={errors2.vendorId} style={{ gridColumn:'1 / -1' }}>
                   <div style={{ display:'flex', gap:'8px', alignItems:'flex-start' }}>

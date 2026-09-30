@@ -15,8 +15,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { S, ICONS, SearchBar, SummaryCard, CustomSelect } from '../inventory-v2/shared';
-import { updateMat } from '../inventory-v2/api';
+import { S, ICONS, SearchBar, SummaryCard, CustomSelect, ToastContainer, useToast } from '../inventory-v2/shared';
+import { updateMat, loadInventory, loadSuppliers } from '../inventory-v2/api';
+import StockInTab from '../inventory-v2/StockInTab';
 import { useIsPhone, KpiStrip, PhoneRow , pesoShort } from '@/components/dashboard/phone';
 import { useAccess } from '@/contexts/AccessContext';
 
@@ -125,6 +126,13 @@ export default function ToBuyPage() {
   // Set the minimum where the shortage is seen. inventoryId -> the value being typed.
   const [minEdit, setMinEdit] = useState({});
   const [minSaving, setMinSaving] = useState(null);
+  // Stock In from here: the same Receive Stock form as the inventory page, opened already filled
+  // with what this list says to buy, so the owner never has to remember it across pages.
+  const { toasts, push: toast, dismiss } = useToast();
+  const [inv, setInv] = useState(null);            // materials, batches and vendors, loaded on first use
+  const [receive, setReceive] = useState(null);    // the prefill handed to the form
+  const [opening, setOpening] = useState('');
+  const [received, setReceived] = useState(null);  // what was just received, for the note at the top
   const closeMin = (id) => setMinEdit(prev => { const n = { ...prev }; delete n[id]; return n; });
   const saveMin = async (r) => {
     const v = Number(minEdit[r.inventoryId]);
@@ -166,6 +174,36 @@ export default function ToBuyPage() {
     )
   );
   const isPhone = useIsPhone();
+
+  const openReceive = async (items, key) => {
+    setOpening(key);
+    try {
+      let d = inv;
+      if (!d) {
+        const [{ mats, bats }, vendors] = await Promise.all([loadInventory(token), loadSuppliers(token)]);
+        d = { materials: mats, batches: bats, vendors };
+        setInv(d);
+      }
+      // One supplier per card, so the first line's supplier is the card's.
+      setReceive({
+        key: Date.now(),
+        vendorId: items[0]?.supplierId ?? null,
+        vendorName: items[0]?.supplierName && items[0].supplierName !== 'No supplier set' ? items[0].supplierName : null,
+        items: items.map(r => ({ matId: String(r.inventoryId), qty: Math.ceil(Number(r.shortfall) || 0), unitCost: Number(r.unitCost) || 0 })),
+      });
+    } catch (e) {
+      toast(e?.message || 'Could not open the stock form. Try again.', 'error');
+    } finally {
+      setOpening('');
+    }
+  };
+  const StockInButton = ({ items, id, label = 'Stock In', small }) => !can('stock.work') ? null : (
+    <button type="button" onClick={() => openReceive(items, id)} disabled={!!opening}
+      title="Record the delivery once it arrives"
+      style={{ ...(small ? S.btnSmGhost : S.btnSm), ...(isPhone ? { minHeight: 40 } : {}), ...(opening ? { opacity: .7, cursor: 'wait' } : {}) }}>
+      {opening === id ? 'Opening...' : label}
+    </button>
+  );
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -257,6 +295,30 @@ export default function ToBuyPage() {
 
   return (
     <div style={{ ...S.page, padding: '24px' }}>
+      <ToastContainer toasts={toasts} dismiss={dismiss} />
+      {inv && (
+        <StockInTab modalOnly prefill={receive}
+          materials={inv.materials} vendors={inv.vendors} batches={inv.batches} setBatches={() => {}}
+          badOrders={[]} setBadOrders={() => {}} token={token} toast={toast}
+          onRefresh={async () => {
+            const { mats, bats } = await loadInventory(token);
+            setInv(d => ({ ...d, materials: mats, batches: bats }));
+            await load();
+          }}
+          onClosed={() => setReceive(null)}
+          onReceived={list => setReceived(list)} />
+      )}
+      {received && (
+        <div role="status" style={{ ...S.card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14, borderLeft: '3px solid var(--st-green-fg)' }}>
+          <span style={{ fontSize: 13 }}>
+            Received {received.map(x => `${num(x.qty)} ${x.unit} ${x.name}`.replace(/\s+/g, ' ')).join(', ')}. The list below is updated.
+          </span>
+          <span style={{ display: 'flex', gap: 8 }}>
+            <a href="/dashboard/business/inventory-v2?tab=stockin" style={{ ...S.btnSmGhost, textDecoration: 'none' }}>View in Stock In</a>
+            <button type="button" onClick={() => setReceived(null)} style={S.btnSmGhost} aria-label="Dismiss">Dismiss</button>
+          </span>
+        </div>
+      )}
       {isPhone ? (
         <KpiStrip items={[
           { key: 'n', label: 'To buy',    value: totals.totalItems },
@@ -481,9 +543,7 @@ export default function ToBuyPage() {
             <div style={{ ...S.row, gap: '10px', ...(isPhone ? { width: '100%', justifyContent: 'space-between' } : {}) }}>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>{peso(g.cost)}</span>
               <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm, ...(isPhone ? { minHeight: 40 } : {}) }} title="Copy this list to paste to the supplier">Copy</button>
-              {can('stock.work') && (<a href="/dashboard/business/inventory-v2?tab=stockin"
-                style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', ...(isPhone ? { minHeight: 40 } : {}) }}
-                title="Record the delivery once it arrives">Stock In</a>)}
+              <StockInButton items={g.items} id={`g:${g.supplier}`} label={g.items.length > 1 ? 'Stock In all' : 'Stock In'} />
             </div>
           </div>
 
@@ -501,7 +561,10 @@ export default function ToBuyPage() {
               </span>}
               sub={[r.inUse === false ? 'not selling yet' : null, `have ${num(r.onHand)}${r.minimum > 0 ? ` · min ${num(r.minimum)}` : ''} ${r.uom} · ${peso(r.estimatedCost)}`, r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null,
                 r.blocks?.length > 0 ? `holding back ${r.blocks.map(b => `${b.product} (${b.canShip}/${b.canBuild})`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
-            <div style={{ padding: '0 14px 10px' }}><MinEditor r={r} compact /></div>
+            <div style={{ padding: '0 14px 10px', display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+              <MinEditor r={r} compact />
+              {g.items.length > 1 && <StockInButton items={[r]} id={`r:${r.inventoryId}`} label="Stock in this" small />}
+            </div>
             </div>
           )) : (<>
           {/* Three questions, three columns: what and why, where the stock stands, what to buy.
@@ -589,6 +652,8 @@ export default function ToBuyPage() {
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--gold)', whiteSpace: 'nowrap' }}>{num(r.shortfall)} {r.uom}</div>
                 <div style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 2 }}>{peso(r.estimatedCost)}</div>
+                {/* One line on its own: the supplier sent part of the list. */}
+                {g.items.length > 1 && <div style={{ marginTop: 8 }}><StockInButton items={[r]} id={`r:${r.inventoryId}`} label="Stock in this" small /></div>}
               </div>
             </div>
             );

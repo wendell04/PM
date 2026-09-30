@@ -2,11 +2,12 @@
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
 import { scrollToFirstError } from '@/lib/scrollToError';
+import { todayLocal } from '@/lib/localDate';
 
 function ReturnModal({ open, onClose, materials, vendors, badOrders, onSave }) {
   const [matId,    setMatId]   = useState('');
   const [vendorId, setVendorId]= useState('');
-  const [date,     setDate]    = useState(new Date().toISOString().split('T')[0]);
+  const [date,     setDate]    = useState(todayLocal());
   const [qty,      setQty]     = useState('');
   const [unitCost, setUnitCost]= useState('');
   const [reason,   setReason]  = useState('');
@@ -20,7 +21,7 @@ function ReturnModal({ open, onClose, materials, vendors, badOrders, onSave }) {
   // BOs linked to selected material (pending ones)
   const relatedBOs = useMemo(() => (badOrders || []).filter(b => b.matId === matId && b.status === 'pending'), [badOrders, matId]);
 
-  const reset = () => { setMatId(''); setVendorId(''); setDate(new Date().toISOString().split('T')[0]); setQty(''); setUnitCost(''); setReason(''); setResType('replacement'); setNotes(''); setLinkedBO(''); setErrors({}); };
+  const reset = () => { setMatId(''); setVendorId(''); setDate(todayLocal()); setQty(''); setUnitCost(''); setReason(''); setResType('replacement'); setNotes(''); setLinkedBO(''); setErrors({}); };
 
   const validate = () => {
     const e = {};
@@ -80,7 +81,7 @@ function ReturnModal({ open, onClose, materials, vendors, badOrders, onSave }) {
 
           <Field label="Return Date" required error={errors.date}>
             <input type="date" value={date} onChange={e => { setDate(e.target.value); setErrors(p=>({...p,date:''})); }}
-              max={new Date().toISOString().split('T')[0]} style={errors.date ? S.inputErr : S.input} />
+              max={todayLocal()} style={errors.date ? S.inputErr : S.input} />
           </Field>
 
           <Field label={`Qty Returned ${mat ? `(${mat.unit})` : ''}`} required error={errors.qty}>
@@ -217,7 +218,7 @@ export default function ReturnsTab({ returns, setReturns, materials, vendors, ba
       id:          uid('bt'),
       matId:       ret.matId,
       invoiceNo:   invoiceNo || `REPL-${ret.id.slice(-6).toUpperCase()}`,
-      date:        new Date().toISOString().split('T')[0],
+      date:        todayLocal(),
       vendorId:    ret.vendorId,
       vendorName:  vendor?.name || ret.vendorName,
       qtyReceived: qty,
@@ -228,7 +229,7 @@ export default function ReturnsTab({ returns, setReturns, materials, vendors, ba
 
     setBatches(prev => [...prev, newBatch]);
     setReturns(prev => prev.map(r => r.id === ret.id
-      ? { ...r, replacementQty: (r.replacementQty || 0) + qty, status:'completed', resolvedDate: new Date().toISOString().split('T')[0] }
+      ? { ...r, replacementQty: (r.replacementQty || 0) + qty, status:'completed', resolvedDate: todayLocal() }
       : r
     ));
     toast?.(`${qty} ${materials.find(m => m.id === ret.matId)?.unit || 'units'} added to stock as replacement.`, 'success');
@@ -237,7 +238,7 @@ export default function ReturnsTab({ returns, setReturns, materials, vendors, ba
 
   const markCredit = (ret) => {
     setReturns(prev => prev.map(r => r.id === ret.id
-      ? { ...r, status:'completed', resolvedDate: new Date().toISOString().split('T')[0] }
+      ? { ...r, status:'completed', resolvedDate: todayLocal() }
       : r
     ));
     toast?.('Credit return marked as completed.', 'success');

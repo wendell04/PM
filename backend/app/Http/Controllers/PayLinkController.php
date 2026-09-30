@@ -38,8 +38,18 @@ class PayLinkController extends Controller
         $owner = User::find($order->userId);
         if (!$owner) return $this->errorResponse('This order cannot be paid online. Contact the shop.', 422);
 
+        // The same two choices My Orders offers: the deposit, when this order takes one, and the
+        // delivery fee, which a parcel courier cannot take at the door so it is not optional there.
+        $payFull = !$s['downpaymentPercent'] || filter_var($request->input('payFull', true), FILTER_VALIDATE_BOOLEAN);
+        $withFee = $s['deliveryFee'] > 0
+            && (!$s['riderCollects'] || filter_var($request->input('includeDeliveryFee', false), FILTER_VALIDATE_BOOLEAN));
+
         $base = rtrim((string) config('app.frontend_url', ''), '/');
-        $sub = Request::create('/api/payment/create-order-pay-link', 'POST', ['orderId' => (string) $order->_id, 'payFull' => true]);
+        $sub = Request::create('/api/payment/create-order-pay-link', 'POST', array_filter([
+            'orderId' => (string) $order->_id,
+            'payFull' => $payFull,
+            'includeCourierFee' => $withFee ?: null,
+        ], fn ($v) => $v !== null));
         $sub->setUserResolver(fn () => $owner);
         // Where PayMongo sends them back: here, not My Orders, which needs a session they do not have.
         $sub->attributes->set('pay_link_return', [
@@ -75,14 +85,36 @@ class PayLinkController extends Controller
         $total = round((float) ($order->totalAmount ?? 0), 2);
         $paid  = round((float) collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0)), 2);
         $name  = trim((string) ($order->userSnapshot['name'] ?? ''));
+        $balance = ($order->paymentStatus ?? '') === 'paid' ? 0.0 : round(max(0, $total - $paid), 2);
+        $cod     = PaymentMethod::isCod($order->paymentMethod);
+        // The deposit is offered on the same terms as My Orders: the first goods payment of an
+        // order that takes one, at a single rate, as a share of what is still owed.
+        $dpPct = (int) ($order->downpaymentPercent ?? 0);
+        $dpOn  = $balance > 0
+            && ($order->paymentStatus ?? '') === 'unpaid'
+            && strtolower((string) ($order->orderStatus ?? '')) === 'awaiting_payment'
+            && !((float) ($order->downPayment ?? 0) > 0)
+            && ($order->requiresDownpayment ?? false)
+            && !($order->downpaymentMixed ?? false)
+            && $dpPct > 0 && $dpPct < 100;
+        $fee   = round((float) ($order->courierFee ?? 0), 2);
+        $feeOn = $fee > 0 && !($order->courierFeePaid ?? false) && !($order->freeDelivery ?? false) && !$cod && $balance > 0;
         return [
             'orderRef'  => $order->orderNumber ?: ('ORD-' . strtoupper(substr((string) $order->_id, -8))),
             'firstName' => $name !== '' ? explode(' ', $name)[0] : '',
             'total'     => $total,
             'paid'      => $paid,
-            'balance'   => ($order->paymentStatus ?? '') === 'paid' ? 0.0 : round(max(0, $total - $paid), 2),
-            'cod'       => PaymentMethod::isCod($order->paymentMethod),
-            'items'     => collect($order->items ?? [])->take(6)->map(fn ($i) => trim(($i['productName'] ?? $i['name'] ?? 'Item') . (!empty($i['variantName']) ? ' - ' . $i['variantName'] : '')) . ' x' . (int) ($i['quantity'] ?? 1))->values(),
+            'balance'   => $balance,
+            'cod'       => $cod,
+            // Before production the payment starts the work; after it, the payment releases the order.
+            'beforeProduction'   => strtolower((string) ($order->orderStatus ?? '')) === 'awaiting_payment',
+            'downpaymentPercent' => $dpOn ? $dpPct : 0,
+            'downpaymentAmount'  => $dpOn ? round($balance * $dpPct / 100, 2) : 0,
+            'deliveryFee'   => $feeOn ? $fee : 0,
+            // A rider can be paid in cash at the door; a parcel courier is prepaid, so there the fee comes with this payment.
+            'riderCollects' => (bool) ($order->courierFeeOnDelivery ?? true),
+            // Orders store the count as qty; quantity is the older spelling.
+            'items'     => collect($order->items ?? [])->take(6)->map(fn ($i) => trim(($i['productName'] ?? $i['name'] ?? 'Item') . (!empty($i['variantName']) ? ' - ' . $i['variantName'] : '')) . ' x' . (int) ($i['qty'] ?? $i['quantity'] ?? 1))->values(),
             'methods'   => PaymentMethod::enabledOnline(),
             'cancelled' => in_array(strtolower((string) ($order->orderStatus ?? '')), ['cancelled', 'returned'], true),
         ];

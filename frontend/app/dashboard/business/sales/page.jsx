@@ -22,6 +22,7 @@ import { normalizeStatus } from '@/lib/orderStatus';
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { S, ICONS, SummaryCard, SearchBar, PaginationBar, EmptyState, CustomSelect } from '../inventory-v2/shared';
 import RecordedSales from './RecordedSales';
+import { todayLocal } from '@/lib/localDate';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -622,7 +623,7 @@ export default function SalesListPage() {
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const csv = [header, ...dataRows, totals].map(r => r.map(esc).join(',')).join(String.fromCharCode(10));
     download(new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
-      `sales-report-${new Date().toISOString().slice(0, 10)}.csv`);
+      `sales-report-${todayLocal()}.csv`);
   };
 
   /**
@@ -675,7 +676,7 @@ export default function SalesListPage() {
       </table></body></html>`;
 
     download(new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' }),
-      `sales-report-${new Date().toISOString().slice(0, 10)}.xls`);
+      `sales-report-${todayLocal()}.xls`);
   };
 
   const FILTER_CARDS = [

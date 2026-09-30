@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import PhoneInput from '@/components/auth/PhoneInput';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { todayLocal } from '@/lib/localDate';
 import {
   blankFormState, blankAnswer, blankOrderLine, validateForm, LIMITS,
   PAYMENT_OPTIONS, MAX_ORDER_LINES,
@@ -177,7 +178,7 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
         return <input style={{ ...field, maxWidth: 160 }} inputMode="numeric" value={v} onChange={e => setAns(q.id, digits(e.target.value, 7))} />;
       case 'date':
         return <input type="date" style={{ ...field, maxWidth: 200, colorScheme: 'light dark' }} value={v}
-          min={new Date().toISOString().slice(0, 10)} onChange={e => setAns(q.id, e.target.value)} />;
+          min={todayLocal()} onChange={e => setAns(q.id, e.target.value)} />;
       case 'choice_one':
         return (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
