@@ -4347,7 +4347,9 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.15);
+  /* A mid grey that shows on a light section as well as a dark one; white at 15% vanished on
+     the light one and a two-page carousel looked like one page. */
+  background: rgba(120, 126, 140, 0.4);
   border: none;
   cursor: pointer;
   padding: 0;
@@ -4373,12 +4375,14 @@
 }
 
 /* A page at a time: no track to move, so nothing depends on the screen's width or the gap.
-   The cards on the page share the row evenly, however many there are. */
+   Every card is one slot wide (--rv-per slots a row), so a lone review or a short last page
+   stays the size of the full pages and sits centred, instead of stretching across the row. */
 .reviews-track-swap {
   transform: none !important;
+  justify-content: center;
 }
 .reviews-track-swap .review-card {
-  flex: 1 1 0;
+  flex: 0 1 calc((100% - (var(--rv-per, 3) - 1) * 20px) / var(--rv-per, 3));
   min-width: 0;
   animation: reviewSwapIn 0.35s ease;
 }

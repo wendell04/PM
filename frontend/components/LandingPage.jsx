@@ -2334,7 +2334,7 @@ const handleForgotResetPassword = async () => {
                 {/* The page is SWAPPED, not slid. A slide has to agree with the card width and the
                     20px gap at every screen size, and a gap's worth of drift is what left the second
                     card cut in half. Nothing here is measured, so nothing can drift. */}
-                <div className="reviews-track reviews-track-swap">
+                <div className="reviews-track reviews-track-swap" style={{ '--rv-per': reviewsPerView }}>
                   {landingReviews
                     .slice(reviewsIdx * reviewsPerView, reviewsIdx * reviewsPerView + reviewsPerView)
                     .map((rv, i) => (

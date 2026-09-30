@@ -373,18 +373,25 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
     Object.entries(selOpts || {}).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, String(v)); });
     return `/shop/products/${product.slug || toSlug(product.name)}/order?${qs.toString()}`;
   };
+  // Signed out, the button says so and asks for sign-in here; the login then lands on returnPath.
+  const loginButton = (label, returnPath) => (
+    <button type="button" className="shop-qv-btn-cart" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => {
+      onClose?.();
+      window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath } }));
+    }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ flexShrink: 0 }} aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+      {label}
+    </button>
+  );
   const customizeButton = () => authToken
     ? <Link href={customizeHref()} className="shop-qv-btn-cart">Customize This Product</Link>
-    : (
-      <button type="button" className="shop-qv-btn-cart" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => {
-        const returnPath = customizeHref();
-        onClose?.();
-        window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath } }));
-      }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ flexShrink: 0 }} aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
-        Login to Customize
-      </button>
-    );
+    : loginButton('Login to Customize', customizeHref());
+  // The chat needs an account, so a signed-out "Ask" goes through sign-in and ?inquire=1 opens
+  // the chat on the product page once they are back.
+  const inquireHref = `/shop/products/${product.slug || toSlug(product.name)}?inquire=1`;
+  const askButton = () => authToken
+    ? <Link href={inquireHref} className="shop-qv-btn-cart" onClick={onClose}>Ask about this</Link>
+    : loginButton('Login to ask', inquireHref);
 
   return (
     <div className="shop-qv-backdrop" onClick={onClose}>
@@ -656,13 +663,7 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
                  usable quantity and no variant, so the fixed-price order form has nothing to work
                  with - an inquiry is a conversation. The PDP opens the chat itself; ?inquire=1 tells
                  it to do that on arrival, so this is one press rather than two. */
-              <Link
-                href={`/shop/products/${product.slug || toSlug(product.name)}?inquire=1`}
-                className="shop-qv-btn-cart"
-                onClick={onClose}
-              >
-                Ask about this
-              </Link>
+              askButton()
             ) : product.isCustom ? (
               /* Straight to the order form, not the product page. Sending someone to the PDP made
                  them press the same button a second time - and it silently dropped the variant and

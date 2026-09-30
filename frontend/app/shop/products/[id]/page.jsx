@@ -57,7 +57,7 @@ export default function ProductDetailPage() {
 
   const params = useParams();
   const router = useRouter();
-  const { token, currentUser } = useAuth();
+  const { token, currentUser, isLoading: authLoading } = useAuth();
   const { addToCart } = useCart();
   const [addedToCart, setAddedToCart] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -522,7 +522,7 @@ export default function ProductDetailPage() {
   const startInquiry = () => {
     if (!product || requestingQuote) return;
     if (!token) {
-      window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
+      window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: `${window.location.pathname}?inquire=1` } }));
       return;
     }
     setRequestingQuote(true);
@@ -547,16 +547,22 @@ export default function ProductDetailPage() {
   // Arriving from the shop grid's "Inquire" button, which sends ?inquire=1 rather than trying to
   // open the chat itself - the auth check and the request write live here, and should stay in one
   // place. The flag is cleared from the URL so a refresh does not fire a second inquiry.
+  // Signed out, the flag stays and sign-in is asked for; the login lands back here with the
+  // token, this runs again and the chat opens - the question is not lost to the login.
   useEffect(() => {
-    if (!product || !isInquiry) return;
+    if (!product || !isInquiry || authLoading) return;
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     if (url.searchParams.get('inquire') !== '1') return;
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: url.pathname + url.search } }));
+      return;
+    }
     url.searchParams.delete('inquire');
     window.history.replaceState({}, '', url.pathname + (url.search || '') + url.hash);
     startInquiry();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product, isInquiry]);
+  }, [product, isInquiry, token, authLoading]);
 
 
   // Computed values
