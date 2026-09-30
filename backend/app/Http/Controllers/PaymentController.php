@@ -3432,7 +3432,8 @@ class PaymentController extends Controller
                     ->post("{$this->baseUrl}/payment_intents/{$intentId}/attach", [
                         'data' => ['attributes' => [
                             'payment_method' => $paymentMethodId,
-                            'return_url'     => "{$frontendUrl}/shop/payment-success?id={$orderId}",
+                            // Started from the emailed pay link: back to that page, which needs no session.
+                            'return_url'     => $request->attributes->get('pay_link_return')['success'] ?? "{$frontendUrl}/shop/payment-success?id={$orderId}",
                         ]]
                     ]);
 

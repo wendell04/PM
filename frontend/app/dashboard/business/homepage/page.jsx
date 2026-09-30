@@ -84,13 +84,6 @@ const DEFAULT_HIW = [
   { title: 'Receive & Enjoy', desc: 'Your personalized item is crafted with care and delivered straight to your door.' },
 ];
 const DEFAULT_CONTACT = { handle: '@personalizemeprints', hours1: 'Mon - Sat: 9:00 AM - 6:00 PM', hours2: 'Sunday: By Appointment', hoursNote: 'You can order any time. Orders placed on Sundays or holidays start production the next working day.', shopeeUrl: 'https://shopee.ph/personalizemeprints', shopeeText: 'Shopee: personalizemeprints', email: '', facebook: 'https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr', instagram: 'https://www.instagram.com/personalizemeprints', tiktok: 'https://www.tiktok.com/@personalizemeprints' };
-const PAY_METHODS = [
-  { id: 'cod', label: 'Cash on Delivery', sub: 'Pay on delivery. May also be limited per-product and is off for downpayment orders.' },
-  { id: 'gcash', label: 'GCash', sub: 'Automated via PayMongo.' },
-  { id: 'paymaya', label: 'Maya', sub: 'Automated via PayMongo.' },
-  { id: 'card', label: 'Credit / Debit Card', sub: 'Visa & Mastercard via PayMongo.' },
-];
-const DEFAULT_PAY_ENABLED = { cod: true, gcash: true, paymaya: true, card: true };
 
 export default function HomepageCmsPage() {
   const { can } = useAccess();
@@ -288,13 +281,11 @@ export default function HomepageCmsPage() {
   const [whyus, setWhyus]     = useState(null);
   const [hiw, setHiw]         = useState(null);
   const [contact, setContact] = useState(null);
-  const [payment, setPayment] = useState(null);
   useEffect(() => {
     const get = (key) => fetch(`${API_URL}/api/storefront/content/${key}`).then(r => r.json()).then(d => d?.data).catch(() => null);
     get('why_us').then(d => setWhyus(Array.isArray(d?.features) ? d.features : DEFAULT_WHYUS));
     get('how_it_works').then(d => setHiw(Array.isArray(d?.steps) ? d.steps : DEFAULT_HIW));
     get('contact').then(d => setContact(d && typeof d === 'object' && !Array.isArray(d) ? { ...DEFAULT_CONTACT, ...d } : DEFAULT_CONTACT));
-    get('payment_methods').then(d => setPayment(d?.enabled && typeof d.enabled === 'object' ? { ...DEFAULT_PAY_ENABLED, ...d.enabled } : DEFAULT_PAY_ENABLED));
   }, []);
   // The Let's Talk form's own switches. They are stored with the shop's settings (the server
   // checks them before accepting a message), so they load from and save to there - but they are
@@ -662,32 +653,14 @@ export default function HomepageCmsPage() {
           )}
         </div>
 
-        {/* ── PAYMENT METHODS ── */}
-        <div style={{ ...card, marginBottom: '1.5rem' }}>
-          <h2 style={cardTitle}>Payment Methods</h2>
-          {payment === null ? <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading…</div> : (
-            <div style={{ display: 'grid', gap: '0.75rem' }}>
-              <p style={{ color: 'var(--gray)', fontSize: '0.8rem', margin: 0, lineHeight: 1.6 }}>Single source of truth. Turning a method <strong>off</strong> removes it from the checkout options customers can pick <strong>and</strong> drops its logo from the homepage footer. Turn it back on to re-open it.</p>
-              {PAY_METHODS.map(m => {
-                const on = payment[m.id] !== false;
-                return (
-                  <div key={m.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '0.85rem 1rem', background: 'var(--dark2)', display: 'flex', alignItems: 'center', gap: '0.9rem', opacity: on ? 1 : 0.6 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)' }}>{m.label}</div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--gray)', marginTop: 2 }}>{m.sub}</div>
-                    </div>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: on ? 'var(--gold)' : 'var(--gray)', minWidth: 28 }}>{on ? 'ON' : 'OFF'}</span>
-                    <button type="button" role="switch" aria-checked={on} onClick={() => setPayment(p => ({ ...p, [m.id]: !on }))} style={{ flex: '0 0 auto', width: 46, height: 26, borderRadius: 999, border: 'none', cursor: 'pointer', background: on ? 'linear-gradient(135deg,var(--gold-light),var(--gold-dark))' : 'var(--dark3)', position: 'relative', transition: 'background 0.18s' }}>
-                      <span style={{ position: 'absolute', top: 3, left: on ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.18s' }} />
-                    </button>
-                  </div>
-                );
-              })}
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button onClick={() => saveContent('payment_methods', { enabled: payment }, 'Payment methods updated - live on the storefront.')} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button>
-              </div>
-            </div>
-          )}
+        {/* Payment methods moved to Settings > Payments: they decide what every checkout offers,
+            which is a shop decision; the footer here only shows their logos. */}
+        <div style={{ ...card, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ ...cardTitle, marginBottom: 4 }}>Payment methods</h2>
+            <div style={{ color: 'var(--gray)', fontSize: '0.8rem' }}>Now in Settings &gt; Payments. The footer logos follow what is turned on there.</div>
+          </div>
+          <a href="/dashboard/business/settings?tab=payments" style={{ ...pubBtn(false), textDecoration: 'none' }}>Open Payments</a>
         </div>
 
         {/* Other sections */}

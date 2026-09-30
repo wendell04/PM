@@ -11,20 +11,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
+import PaymentPicker from '@/components/shop/PaymentPicker';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-const METHOD_NAMES = { gcash: 'GCash', paymaya: 'Maya', card: 'card' };
-// Only what the owner has left on (Payment Methods) - the page never promises one that is off.
-const methodsText = (m) => {
-  const names = (Array.isArray(m) ? m : ['gcash', 'paymaya', 'card']).map(x => METHOD_NAMES[x] || x);
-  return names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : (names[0] || 'Online payment');
-};
 const peso = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function PayPage() {
   const { token } = useParams();
   const params = useSearchParams();
-  const back = params.get('done') === '1';
+  const returned = params.get('done') === '1';
   const failed = params.get('failed') === '1';
 
   const [data, setData] = useState(null);
@@ -54,14 +49,14 @@ export default function PayPage() {
     let dead = false;
     (async () => {
       try {
-        if (back) {
+        if (returned) {
           // Back from PayMongo: record it now. A wallet can take a few seconds to confirm, so ask
           // again a couple of times before saying it is still on its way.
           setChecking(true);
           const before = paidBefore();
           const landed = (x) => x.balance <= 0 || (before != null && x.paid > before);
           let d = await call('/verify', 'POST');
-          for (let i = 0; i < 3 && !landed(d); i++) {
+          for (let i = 0; i < 3 && !landed(d) && d.attempt !== 'failed'; i++) {
             await new Promise(r => setTimeout(r, 3000));
             d = await call('/verify', 'POST');
           }
@@ -71,19 +66,48 @@ export default function PayPage() {
       finally { if (!dead) { setLoading(false); setChecking(false); } }
     })();
     return () => { dead = true; };
-  }, [call, back]);
+  }, [call, returned]);
+  // Back from PayMongo with the wallet or card declined: the choices come back with a note, rather
+  // than "still on its way" for a payment that is not coming.
+  const back = returned && data?.attempt !== 'failed';
 
   // Same choices as My Orders. A parcel courier cannot be paid at the door, so there the fee is not optional.
   const feeIncluded = !!data?.deliveryFee && (withFee || !data?.riderCollects);
   const goods = data ? (data.downpaymentPercent && !payFull ? data.downpaymentAmount : data.balance) : 0;
   const charge = Math.round((goods + (feeIncluded ? data.deliveryFee : 0)) * 100) / 100;
 
-  const pay = async () => {
+  // The same picker as My Orders: GCash and Maya go straight to their authorize page, a card is
+  // entered here and goes to the bank's 3D Secure check - no second choice on PayMongo's page.
+  const pay = async (method, cardData) => {
     setBusy(true); setError('');
     try {
-      const d = await call('/checkout', 'POST', { payFull: !data.downpaymentPercent || payFull, includeDeliveryFee: feeIncluded });
+      let paymentMethodId;
+      if (method === 'card') {
+        const [mm, yy] = (cardData?.expiry || '').split('/');
+        const res = await fetch('https://api.paymongo.com/v1/payment_methods', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Basic ${btoa((process.env.NEXT_PUBLIC_PAYMONGO_PUBLIC_KEY || '') + ':')}` },
+          body: JSON.stringify({ data: { attributes: { type: 'card',
+            details: { card_number: (cardData?.number || '').replace(/\s/g, ''), exp_month: parseInt(mm, 10), exp_year: parseInt('20' + (yy || ''), 10), cvc: cardData?.cvc },
+            billing: { name: (cardData?.name || '').trim() || data.billing?.name || data.firstName || 'Customer', email: data.billing?.email || '' } } } }),
+        });
+        const pm = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detail = pm.errors?.[0]?.detail ?? '';
+          throw new Error(detail.includes('card_number') ? 'Card number is invalid.'
+            : (detail.includes('exp_month') || detail.includes('exp_year')) ? 'Expiry date is invalid.'
+            : detail.includes('cvc') ? 'Security code is invalid.'
+            : 'Check the card details and try again.');
+        }
+        paymentMethodId = pm.data.id;
+      }
       try { sessionStorage.setItem(paidKey, String(data.paid)); } catch { /* the check falls back to the balance */ }
-      window.location.href = d.checkoutUrl;
+      const d = await call('/checkout', 'POST', {
+        payFull: !data.downpaymentPercent || payFull, includeDeliveryFee: feeIncluded,
+        paymentMethod: method, ...(paymentMethodId ? { paymentMethodId } : {}),
+      });
+      // A card that clears without 3D Secure is already recorded: show it the way a return does.
+      window.location.href = d.status === 'succeeded' ? `/pay/${token}?done=1` : d.checkoutUrl;
     } catch (e) { setError(e.message); setBusy(false); }
   };
 
@@ -140,7 +164,7 @@ export default function PayPage() {
         ? 'We have not received the confirmation yet - it can take a minute. Refresh this page shortly; you will not be charged twice.'
         : `${data.firstName ? `Hi ${data.firstName}, t` : 'T'}his is what is left on your order. ${data.beforeProduction ? 'Production starts once your payment clears.' : 'Once it clears, we release it for delivery.'}`}
     </p>
-    {failed && <div className="py-error">The payment did not go through. Nothing was charged - you can try again.</div>}
+    {(failed || data.attempt === 'failed') && <div className="py-error">The payment did not go through. Nothing was charged - you can try again.</div>}
     <div className="py-sum">
       <div><span>Order total</span><b>{peso(data.total)}</b></div>
       <div><span>Already paid</span><b>{peso(data.paid)}</b></div>
@@ -174,21 +198,26 @@ export default function PayPage() {
     {!back && (
       <div className="py-due-row"><span>To pay now</span><b>{peso(charge)}</b></div>
     )}
-    {error && <div className="py-error">{error}</div>}
-    <div className="py-actions">
-      {back
-        ? <button type="button" className="py-btn" onClick={() => window.location.replace(`/pay/${token}?done=1`)}>Check again</button>
-        : <button type="button" className="py-btn" onClick={pay} disabled={busy}>{busy ? 'Opening the payment page...' : `Pay ${peso(charge)}`}</button>}
-    </div>
+    {back ? (<>
+      {error && <div className="py-error">{error}</div>}
+      <div className="py-actions">
+        <button type="button" className="py-btn" onClick={() => window.location.replace(`/pay/${token}?done=1`)}>Check again</button>
+        <a className="py-btn ghost" href={`/pay/${token}`}>Choose how to pay again</a>
+      </div>
+    </>) : (
+      <PaymentPicker methods={(data.methods || []).filter(m => ['gcash', 'paymaya', 'card'].includes(m))}
+        amount={charge} onPay={pay} loading={busy} error={error || null} />
+    )}
     {!back && data.deliveryFee > 0 && !feeIncluded && (
       <p className="py-fine">You will hand {peso(data.deliveryFee)} to the rider in cash when your order arrives.</p>
     )}
-    <p className="py-fine">{methodsText(data.methods)}, through PayMongo. No sign-in needed; this link works for this one order only.</p>
+    <p className="py-fine">Paid securely through PayMongo. No sign-in needed; this link works for this one order only.</p>
   </>);
 }
 
 const css = `
   .py-wrap { min-height: 100vh; background: #f4f4f2; padding: 2.5rem 1rem 4rem; color-scheme: light;
+             --white: #111111; --gray: #666666; --border: rgba(0,0,0,.14); --dark: #ffffff; --dark2: #f7f7f5;
              display: flex; justify-content: center; align-items: flex-start; font-family: Arial, Helvetica, sans-serif; }
   .py-card { width: 100%; max-width: 480px; background: #ffffff; border: 1px solid rgba(0,0,0,.08);
              border-radius: 14px; padding: 1.75rem; box-shadow: 0 1px 3px rgba(0,0,0,.04); }

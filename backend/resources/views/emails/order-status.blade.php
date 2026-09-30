@@ -150,7 +150,24 @@
                 </table>
               @endif
 
-              @if ($orderUrl)
+              @if ($payUrl)
+                {{-- The one thing to do next, as the button; the order itself stays a link below it. --}}
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 10px;">
+                  <tr>
+                    <td style="border-radius:8px;background: #D4A843;">
+                      <a href="{{ $payUrl }}" style="display:inline-block;padding:13px 28px;font-size:15px;font-weight:700;color: #1a1a1a;text-decoration:none;border-radius:8px;">
+                        {{ $payLabel }}
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:0 0 16px;font-size:12px;color: #6b6b6b;line-height:1.6;">
+                  {{ $payNote }}
+                  @if ($orderUrl)
+                    <br><a href="{{ $orderUrl }}" style="color: #a67c1a;text-decoration:none;font-weight:700;">View the order in My Orders</a>
+                  @endif
+                </p>
+              @elseif ($orderUrl)
                 <p style="margin:0 0 16px;font-size:13px;">
                   <a href="{{ $orderUrl }}" style="color: #a67c1a;text-decoration:none;font-weight:700;">
                     Open this order in My Orders

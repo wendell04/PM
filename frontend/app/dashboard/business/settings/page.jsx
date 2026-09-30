@@ -15,6 +15,7 @@ import OrderForms from './OrderForms';
 import { fetchRegions, fetchProvinces, fetchCities, fetchBarangays, isNCR } from '@/lib/psgc';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import BackupsPanel from '@/components/dashboard/BackupsPanel';
+import PaymentsPanel from '@/components/dashboard/PaymentsPanel';
 import ChangeEmailButton from '@/components/ChangeEmailButton';
 import ImageCropper from '@/components/ImageCropper';
 
@@ -180,7 +181,7 @@ export default function SettingsPage() {
   // (SUPERADMIN_FULL_ACCESS=false) keeps a developer out of Shipping, Chat, Order forms and Terms.
   const seesShop = currentUser?.role === 'owner' || access.can('shopSettings.view');
   const worksShop = currentUser?.role === 'owner' || access.can('shopSettings.work');
-  const GRANTABLE_TABS = ['shipping', 'chat', 'orderforms'];
+  const GRANTABLE_TABS = ['shipping', 'payments', 'chat', 'orderforms'];
   const tabAllowed = (id) => GRANTABLE_TABS.includes(id) ? seesShop
     : id === 'integrations' ? isSystemAdmin
     : id === 'backups' ? ownsShop
@@ -191,7 +192,7 @@ export default function SettingsPage() {
   // Other modules link straight to a tab (Messages -> ?tab=chat), so the owner never has to hunt for it.
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get('tab');
-    if (['profile', 'security', 'shipping', 'chat', 'orderforms', 'integrations', 'backups', 'terms', 'notifications', 'appearance'].includes(wanted)
+    if (['profile', 'security', 'shipping', 'payments', 'chat', 'orderforms', 'integrations', 'backups', 'terms', 'notifications', 'appearance'].includes(wanted)
         && tabAllowed(wanted)) {
       setActiveTab(wanted);
     }
@@ -376,10 +377,10 @@ export default function SettingsPage() {
 
   // ── Load shipping settings ────────────────────────────────
   useEffect(() => {
-    // Three tabs read this payload: Shipping for the rates and fees, Terms for the clauses, and
-    // Integrations for the mail lanes. Each one that was left out of this list rendered an empty
-    // section and looked like a broken deploy - which is exactly how the mail lanes were read.
-    if (!token || !['shipping', 'terms', 'integrations'].includes(activeTab)) return;
+    // Four tabs read this payload: Shipping for the rates and fees, Payments for the minimum online
+    // payment, Terms for the clauses, and Integrations for the mail lanes. Each one that was left out
+    // of this list rendered an empty section and looked like a broken deploy.
+    if (!token || !['shipping', 'payments', 'terms', 'integrations'].includes(activeTab)) return;
     fetchWithTimeout(`${API_URL}/api/admin/settings`, { headers: { Authorization: `Bearer ${token}` } }, 10000)
       .then(r => r.json())
       .then(d => {
@@ -1117,7 +1118,6 @@ export default function SettingsPage() {
         maxRevisions:        Math.min(20, Math.max(1, parseInt(shippingForm.maxRevisions, 10) || 1)),
         depositDueDays:      Math.min(60, Math.max(1, parseInt(shippingForm.depositDueDays, 10) || 1)),
         proofReplyDays:      Math.min(60, Math.max(3, parseInt(shippingForm.proofReplyDays, 10) || 14)),
-        minOnlinePayment:    Math.min(5000, Math.max(20, parseInt(shippingForm.minOnlinePayment, 10) || 100)),
         unpaidOrderDays:     Math.min(60, Math.max(1, parseInt(shippingForm.unpaidOrderDays, 10) || 1)),
         unpaidReadyHoldDays: Math.min(180, Math.max(1, parseInt(shippingForm.unpaidReadyHoldDays, 10) || 14)),
         refundDays:          Math.min(60,  Math.max(1, parseInt(shippingForm.refundDays, 10) || 7)),
@@ -1217,6 +1217,8 @@ export default function SettingsPage() {
               { id: 'profile', label: 'Profile' },
               { id: 'security', label: 'Security' },
               { id: 'shipping', label: 'Shipping' },
+              // What customers can pay with - a shop decision, so here and not in the Homepage editor.
+              { id: 'payments', label: 'Payments' },
               { id: 'chat', label: 'Chat' },
               // The questions asked before a price is given. They are configuration the whole
               // shop shares, not one conversation, so they live here and not in the chat.
@@ -1822,6 +1824,12 @@ export default function SettingsPage() {
 
           {activeTab === 'orderforms' && <OrderForms token={token} />}
 
+          {activeTab === 'payments' && (
+            <PaymentsPanel token={token} readOnly={shopReadOnly}
+              minOnline={shippingForm.minOnlinePayment}
+              setMinOnline={v => setShippingForm(f => ({ ...f, minOnlinePayment: v }))}
+              saveMin={v => saveShippingFields({ minOnlinePayment: v })} />
+          )}
           {activeTab === 'backups' && <BackupsPanel token={token} developer={['superAdmin', 'admin'].includes(currentUser?.role)} />}
 
           {activeTab === 'integrations' && (
@@ -2429,27 +2437,6 @@ export default function SettingsPage() {
                   </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
                     How long an approved proof is held once the customer approves it. After this the order lapses and the reserved stock goes back.
-                  </p>
-                </div>
-
-                {/* Was a fixed P100 in the checkout code. PayMongo's own floor is P20; above that it is the
-                    shop's call, so it lives here. */}
-                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
-                  <div>
-                  <label htmlFor="set-min-online" style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
-                    Minimum online payment (PHP)
-                  </label>
-                  <input
-                    id="set-min-online" type="text" inputMode="numeric" maxLength={4}
-                    value={shippingForm.minOnlinePayment ?? ''}
-                    onChange={e => setShippingForm(f => ({ ...f, minOnlinePayment: e.target.value.replace(/[^0-9]/g, '') }))}
-                    placeholder="100"
-                    style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem', boxSizing: 'border-box' }}
-                  />
-                  </div>
-                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
-                    The smallest amount a customer can pay by GCash, Maya or card. A deposit under it is raised to it (never past the order total).
-                    Lowest allowed is 20, which is PayMongo&apos;s own minimum.
                   </p>
                 </div>
 

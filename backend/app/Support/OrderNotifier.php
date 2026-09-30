@@ -238,6 +238,38 @@ final class OrderNotifier
      * that plainly had them.
      */
     /**
+     * The email's Pay button, when paying is what happens next: the no-sign-in pay page, with the
+     * same deposit and delivery-fee choices as My Orders. Empty on COD, a settled or cancelled order,
+     * or with online payment off - the email then keeps just the My Orders link.
+     *
+     * @return array{0:string,1:string,2:string} [payUrl, payLabel, payNote]
+     */
+    private static function payButton(Order $order): array
+    {
+        try {
+            $s = app(\App\Http\Controllers\PayLinkController::class)->summary($order);
+            if ($s['balance'] <= 0 || $s['cod'] || $s['cancelled'] || !$s['methods']) return ['', '', ''];
+            $first = $s['downpaymentPercent'] ? $s['downpaymentAmount'] : $s['balance'];
+            return [
+                \App\Support\PayLink::url($order),
+                'Pay ₱' . number_format($first, 2),
+                ($s['downpaymentPercent'] ? 'Or pay the full ₱' . number_format($s['balance'], 2) . '. ' : '')
+                    . self::methodsText($s['methods']) . ' - no sign-in needed.',
+            ];
+        } catch (\Throwable $e) {
+            return ['', '', ''];
+        }
+    }
+
+    /** Only the methods the shop has on, as a customer reads them: "GCash, Maya or card". */
+    private static function methodsText(array $methods): string
+    {
+        $names = array_values(array_map(fn ($m) => ['gcash' => 'GCash', 'paymaya' => 'Maya', 'card' => 'card'][$m] ?? $m, $methods));
+        if (count($names) <= 1) return $names ? ucfirst($names[0]) : 'Online payment';
+        return implode(', ', array_slice($names, 0, -1)) . ' or ' . end($names);
+    }
+
+    /**
      * "You approved the design - pay to start production", in the bell and by email.
      *
      * The only word of it used to be a card in the chat. A customer who approved from the proof
@@ -252,9 +284,9 @@ final class OrderNotifier
             $headline = $reminder
                 // The night before the hold runs out (orders:expire-unpaid-proofs).
                 ? 'Reminder: order #' . $ref . ' is held until ' . $heldUntil . '. Pay ' . $dueNow
-                    . ' in My Orders before then to start production - after that the order is cancelled and the held materials are released.'
+                    . ' before then to start production - after that the order is cancelled and the held materials are released.'
                 : 'Thanks for approving the design for order #' . $ref . '. Pay ' . $dueNow
-                    . ' in My Orders to start production' . ($heldUntil ? ' - we hold your order until ' . $heldUntil . '.' : '.');
+                    . ' to start production' . ($heldUntil ? ' - we hold your order until ' . $heldUntil . '.' : '.');
             try {
                 Notification::create([
                     'user_id'    => (string) $order->userId,
@@ -273,13 +305,17 @@ final class OrderNotifier
             if ($email) {
                 $name = trim((string) ($order->userSnapshot['name'] ?? ''));
                 $base = rtrim((string) config('app.frontend_url', ''), '/');
+                [$payUrl, $payLabel, $payNote] = $base !== '' ? self::payButton($order) : ['', '', ''];
                 Mail::to($email)->send(new \App\Mail\OrderStatusMail(
                     firstName:   $name !== '' ? explode(' ', $name)[0] : 'Customer',
                     orderId:     (string) $order->_id,
                     newStatus:   'awaiting_payment',
                     totalAmount: (float) ($order->totalAmount ?? 0),
                     headline:    $headline,
-                    orderUrl:    $base !== '' ? $base . '/shop/orders-history' : ''
+                    orderUrl:    $base !== '' ? $base . '/shop/orders-history?order=' . $order->_id : '',
+                    payUrl:      $payUrl,
+                    payLabel:    $payLabel,
+                    payNote:     $payNote
                 ));
             }
         } catch (\Throwable $e) {
@@ -371,6 +407,10 @@ final class OrderNotifier
             if ($email) {
                 $name = trim((string) ($order->userSnapshot['name'] ?? ''));
                 $base = rtrim((string) config('app.frontend_url', ''), '/');
+                // When paying is what happens next, the email carries the button for it: the no-sign-in
+                // pay page, with the same deposit and delivery-fee choices as My Orders.
+                [$payUrl, $payLabel, $payNote] = $key === 'ready_for_delivery' && $base !== ''
+                    ? self::payButton($order) : ['', '', ''];
                 Mail::to($email)->send(new \App\Mail\OrderStatusMail(
                     firstName:      $name !== '' ? explode(' ', $name)[0] : 'Customer',
                     orderId:        (string) $order->_id,
@@ -381,7 +421,10 @@ final class OrderNotifier
                     courierName:    $courier,
                     trackingNumber: $tracking,
                     trackingUrl:    $link,
-                    orderUrl:       $base !== '' ? $base . '/shop/orders-history' : ''
+                    orderUrl:       $base !== '' ? $base . '/shop/orders-history?order=' . $order->_id : '',
+                    payUrl:         $payUrl,
+                    payLabel:       $payLabel,
+                    payNote:        $payNote
                 ));
             }
 

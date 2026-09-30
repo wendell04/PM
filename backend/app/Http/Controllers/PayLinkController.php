@@ -44,11 +44,24 @@ class PayLinkController extends Controller
         $withFee = $s['deliveryFee'] > 0
             && (!$s['riderCollects'] || filter_var($request->input('includeDeliveryFee', false), FILTER_VALIDATE_BOOLEAN));
 
+        // Chosen here, as in My Orders: GCash and Maya go straight to their own authorize page, a card
+        // is entered on the pay page and goes to the bank's 3D Secure check. Only a method the shop has
+        // on is taken; with none named, PayMongo's own page asks (the older links' behaviour).
+        $method = $request->input('paymentMethod');
+        if ($method !== null && !in_array($method, $s['methods'], true)) {
+            return $this->errorResponse('That payment method is not available right now. Choose another.', 422);
+        }
+        if ($method === 'card' && !preg_match('/^pm_[A-Za-z0-9]{1,120}$/', (string) $request->input('paymentMethodId'))) {
+            return $this->errorResponse('Enter your card details again.', 422);
+        }
+
         $base = rtrim((string) config('app.frontend_url', ''), '/');
         $sub = Request::create('/api/payment/create-order-pay-link', 'POST', array_filter([
             'orderId' => (string) $order->_id,
             'payFull' => $payFull,
             'includeCourierFee' => $withFee ?: null,
+            'paymentMethod'   => $method ?: null,
+            'paymentMethodId' => $method === 'card' ? $request->input('paymentMethodId') : null,
         ], fn ($v) => $v !== null));
         $sub->setUserResolver(fn () => $owner);
         // Where PayMongo sends them back: here, not My Orders, which needs a session they do not have.
@@ -59,6 +72,10 @@ class PayLinkController extends Controller
         ]);
         $res = app(PaymentController::class)->createOrderPayLink($sub);
         $data = json_decode($res->getContent(), true) ?? [];
+        // A card that clears without 3D Secure is already recorded - there is nowhere to send them.
+        if ($res->getStatusCode() < 300 && ($data['data']['status'] ?? null) === 'succeeded') {
+            return $this->successResponse('Paid.', ['status' => 'succeeded']);
+        }
         if ($res->getStatusCode() >= 300 || empty($data['data']['checkoutUrl'])) {
             return $this->errorResponse($data['message'] ?? 'Could not start the payment. Try again.', $res->getStatusCode() >= 300 ? $res->getStatusCode() : 502);
         }
@@ -71,16 +88,21 @@ class PayLinkController extends Controller
         $order = PayLink::resolve($token);
         if (!$order) return $this->errorResponse('This payment link has expired or is not valid.', 410);
         $owner = User::find($order->userId);
+        $attempt = null;
         if ($owner && $this->summary($order)['balance'] > 0 && ($order->paymongoLinkId || $order->paymongoIntentId)) {
             $sub = Request::create('/api/payment/verify-intent', 'POST', ['orderId' => (string) $order->_id]);
             $sub->setUserResolver(fn () => $owner);
-            try { app(PaymentController::class)->verifyIntent($sub); } catch (\Throwable $e) { /* the webhook still records it */ }
+            try {
+                $r = json_decode(app(PaymentController::class)->verifyIntent($sub)->getContent(), true);
+                // PayMongo puts a declined or cancelled wallet/card back to waiting for a method.
+                if (($r['data']['paymentStatus'] ?? null) === 'awaiting_payment_method') $attempt = 'failed';
+            } catch (\Throwable $e) { /* the webhook still records it */ }
         }
-        return $this->successResponse('Checked.', $this->summary(Order::find($order->_id)));
+        return $this->successResponse('Checked.', $this->summary(Order::find($order->_id)) + ['attempt' => $attempt]);
     }
 
-    /** Only what the page needs: no address, phone, email or items beyond names. */
-    private function summary(Order $order): array
+    /** Only what the page needs: no address or phone; the email only as card billing, never shown. Public for the emails' pay button. */
+    public function summary(Order $order): array
     {
         $total = round((float) ($order->totalAmount ?? 0), 2);
         $paid  = round((float) collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0)), 2);
@@ -102,6 +124,8 @@ class PayLinkController extends Controller
         return [
             'orderRef'  => $order->orderNumber ?: ('ORD-' . strtoupper(substr((string) $order->_id, -8))),
             'firstName' => $name !== '' ? explode(' ', $name)[0] : '',
+            // PayMongo requires a billing name and email to take a card; not shown on the page.
+            'billing'   => ['name' => $name, 'email' => (string) ($order->userSnapshot['email'] ?? optional(User::find($order->userId))->email ?? '')],
             'total'     => $total,
             'paid'      => $paid,
             'balance'   => $balance,

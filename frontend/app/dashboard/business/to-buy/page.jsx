@@ -440,7 +440,11 @@ export default function ToBuyPage() {
               ]} />
           </div>
         )}
-        <button type="button" onClick={load} style={{ ...S.btnGhost, marginLeft: 'auto' }}>Refresh</button>
+        {/* The receipts themselves live in Inventory; one way there, not one per supplier. */}
+        {can('stock.view') && (
+          <a href="/dashboard/business/inventory-v2?tab=stockin" style={{ ...S.btnGhost, marginLeft: 'auto', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>Stock In history</a>
+        )}
+        <button type="button" onClick={load} style={{ ...S.btnGhost, ...(can('stock.view') ? {} : { marginLeft: 'auto' }) }}>Refresh</button>
       </div>
 
       {tab === 'materials' && !loading && notSellingCount > 0 && show !== 'all' && (
@@ -543,7 +547,8 @@ export default function ToBuyPage() {
             <div style={{ ...S.row, gap: '10px', ...(isPhone ? { width: '100%', justifyContent: 'space-between' } : {}) }}>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>{peso(g.cost)}</span>
               <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm, ...(isPhone ? { minHeight: 40 } : {}) }} title="Copy this list to paste to the supplier">Copy</button>
-              <StockInButton items={g.items} id={`g:${g.supplier}`} label={g.items.length > 1 ? 'Stock In all' : 'Stock In'} />
+              {/* Every line has its own button; the card's only adds something when there is more than one. */}
+              {g.items.length > 1 && <StockInButton items={g.items} id={`g:${g.supplier}`} label="Stock in all" />}
             </div>
           </div>
 
@@ -563,7 +568,7 @@ export default function ToBuyPage() {
                 r.blocks?.length > 0 ? `holding back ${r.blocks.map(b => `${b.product} (${b.canShip}/${b.canBuild})`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
             <div style={{ padding: '0 14px 10px', display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
               <MinEditor r={r} compact />
-              {g.items.length > 1 && <StockInButton items={[r]} id={`r:${r.inventoryId}`} label="Stock in this" small />}
+              <StockInButton items={[r]} id={`r:${r.inventoryId}`} label="Stock in this" small />
             </div>
             </div>
           )) : (<>
@@ -653,7 +658,7 @@ export default function ToBuyPage() {
                 <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--gold)', whiteSpace: 'nowrap' }}>{num(r.shortfall)} {r.uom}</div>
                 <div style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 2 }}>{peso(r.estimatedCost)}</div>
                 {/* One line on its own: the supplier sent part of the list. */}
-                {g.items.length > 1 && <div style={{ marginTop: 8 }}><StockInButton items={[r]} id={`r:${r.inventoryId}`} label="Stock in this" small /></div>}
+                <div style={{ marginTop: 8 }}><StockInButton items={[r]} id={`r:${r.inventoryId}`} label="Stock in this" small /></div>
               </div>
             </div>
             );

@@ -27,6 +27,9 @@ class OrderStatusMail extends Mailable implements ShouldQueue
     public string $trackingUrl;
     public string $orderUrl;
     public string $contactEmail;
+    public string $payUrl;
+    public string $payLabel;
+    public string $payNote;
 
     public function __construct(
         string $firstName,
@@ -39,7 +42,10 @@ class OrderStatusMail extends Mailable implements ShouldQueue
         string $trackingNumber = '',
         string $trackingUrl = '',
         string $orderUrl = '',
-        string $contactEmail = 'personalizemeprints.admin@gmail.com'
+        string $contactEmail = 'personalizemeprints.admin@gmail.com',
+        string $payUrl = '',
+        string $payLabel = '',
+        string $payNote = ''
     ) {
         $this->firstName      = $firstName;
         $this->orderId        = $orderId;
@@ -53,6 +59,9 @@ class OrderStatusMail extends Mailable implements ShouldQueue
         $this->trackingUrl    = $trackingUrl;
         $this->orderUrl       = $orderUrl;
         $this->contactEmail   = $contactEmail;
+        $this->payUrl         = $payUrl;
+        $this->payLabel       = $payLabel;
+        $this->payNote        = $payNote;
     }
 
     public static function key(string $status): string

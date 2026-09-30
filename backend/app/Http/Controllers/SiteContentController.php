@@ -34,7 +34,8 @@ class SiteContentController extends Controller
             // replies are edited in Settings > Chat, so they follow "Shop settings", not "Homepage" -
             // someone trusted with the landing page text is not thereby trusted with what the shop
             // says in its own voice in every conversation, and the other way round.
-            $need = $key === 'chat_auto_replies' ? 'shopSettings.work' : 'homepage';
+            // Which payments the shop takes is edited in Settings > Payments, a shop decision like the chat's.
+            $need = in_array($key, ['chat_auto_replies', 'payment_methods'], true) ? 'shopSettings.work' : 'homepage';
             if (!\App\Support\Rbac::allowsFor($request->user(), $need, true)) {
                 return $this->unauthorizedResponse();
             }
@@ -42,6 +43,19 @@ class SiteContentController extends Controller
             $validated = $request->validate([
                 'data' => 'required|array',
             ]);
+
+            if ($key === 'payment_methods') {
+                // Deposits, design fees and the emailed pay link can only be paid online, so the last
+                // online method cannot be switched off. Missing means on, the same as every reader.
+                $on = (array) ($validated['data']['enabled'] ?? []);
+                $flag = fn ($m) => !array_key_exists($m, $on) || filter_var($on[$m], FILTER_VALIDATE_BOOLEAN);
+                $validated['data'] = ['enabled' => [
+                    'cod' => $flag('cod'), 'gcash' => $flag('gcash'), 'paymaya' => $flag('paymaya'), 'card' => $flag('card'),
+                ]];
+                if (!$validated['data']['enabled']['gcash'] && !$validated['data']['enabled']['paymaya'] && !$validated['data']['enabled']['card']) {
+                    return $this->errorResponse('Keep at least one online method on (GCash, Maya or card) - deposits, design fees and pay links can only be paid online.', 422);
+                }
+            }
 
             $row = SiteContent::where('key', $key)->first();
             if ($row) {
