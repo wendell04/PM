@@ -1575,10 +1575,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     setReminding(true); setRemindMsg(null);
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/remind-balance`,
-        { method:'POST', headers:{ Authorization:`Bearer ${token}` } }, 15000);
+        { method:'POST', headers:{ Authorization:`Bearer ${token}`, Accept:'application/json' } }, 30000);
       const data = await res.json().catch(()=>({}));
       if (!res.ok) throw new Error(data.message || 'Failed to send the reminder.');
-      setRemindMsg({ ok:true, text:'Reminder sent to the customer, in the bell and in your chat.' });
+      // The server says what actually went out - the email can fail on its own.
+      setRemindMsg({ ok: data?.data?.emailed !== false, text: data.message || 'Reminder sent to the customer.' });
     } catch (err) {
       setRemindMsg({ ok:false, text: err.message });
     } finally { setReminding(false); }

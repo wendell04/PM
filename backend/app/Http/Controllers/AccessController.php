@@ -29,11 +29,14 @@ class AccessController extends Controller
             return $this->unauthorizedResponse();
         }
 
+        // Highest level first (Administrator, Manager, then the staff roles, then custom ones), so the
+        // list reads like the team does. It came back in database order: Production Staff on top.
         $templates = RolePermission::all()->map(fn ($r) => [
             'role'        => $r->role,
             'label'       => $r->label ?: $this->humanRole($r->role),
             'permissions' => PermissionCatalog::normalize((array) ($r->permissions ?? [])),
-        ])->values();
+            'rank'        => Rbac::rank($r->role),
+        ])->sortBy([['rank', 'desc'], ['label', 'asc']])->values();
 
         // What the person looking may do here, so the page offers only that. The server still
         // checks every save; this only keeps buttons that would be refused off the screen.

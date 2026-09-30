@@ -968,10 +968,34 @@ class OrderController extends Controller
 
             $this->postOrderChat($order, $text, $ref, $balance);
 
+            // And by email: the bell and the chat are seen only by a customer already in the app, and
+            // this is the message that decides whether a finished order leaves the shop.
+            $emailed = false;
+            $email = $order->userSnapshot['email'] ?? optional(\App\Models\User::find($order->userId))->email;
+            if ($email) {
+                try {
+                    $name = trim((string) ($order->userSnapshot['name'] ?? ''));
+                    $base = rtrim((string) config('app.frontend_url', ''), '/');
+                    \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\PaymentReminderMail(
+                        firstName: $name !== '' ? explode(' ', $name)[0] : 'Customer',
+                        orderRef:  $ref,
+                        total:     round((float) ($order->totalAmount ?? 0), 2),
+                        paid:      round($paid, 2),
+                        balance:   $balance,
+                        orderUrl:  $base !== '' ? $base . '/shop/orders-history?order=' . urlencode((string) $order->_id) : '',
+                    ));
+                    $emailed = true;
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('OrderController@remindBalance email: ' . $e->getMessage(), ['order_id' => (string) $order->_id]);
+                }
+            }
+
             $order->balanceReminderAt = now();
             $order->save();
 
-            return $this->successResponse('Reminder sent to the customer.', ['balance' => $balance]);
+            return $this->successResponse($emailed
+                ? 'Reminder sent to the customer - by email, in the bell and in the chat.'
+                : 'Reminder sent in the bell and the chat. The email could not be sent.', ['balance' => $balance, 'emailed' => $emailed]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to send the reminder.');
         }

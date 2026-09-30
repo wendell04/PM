@@ -164,6 +164,7 @@ export default function AccessPage() {
   };
 
   const applyTemplate = (role) => {
+    if (role === 'owner') { setDraft({}); return; }   // unlimited: no ticks to carry
     const t = templates.find(x => x.role === role);
     if (!t) return;
     // Below the owner, the template fills in only what the viewer may give (or the person already
@@ -475,6 +476,9 @@ export default function AccessPage() {
               value={isNew ? newFields.role : ''}
               onChange={(v) => { if (isNew) { setNewFields(p => ({ ...p, role: v })); setFieldErr(p => ({ ...p, role: '' })); } applyTemplate(v); }}
               options={[{ value: '', label: 'Choose one...' },
+                // The shop owner: offered only to someone allowed to make one (a super admin, while
+                // the shop has no owner). Not a template - the owner is never limited.
+                ...(isNew && viewer.assignable?.includes('owner') ? [{ value: 'owner', label: 'Store Owner (full access)' }] : []),
                 ...templates.filter(t => !viewer.assignable || viewer.assignable.includes(t.role) || t.role === editing.role).map(t => ({ value: t.role, label: t.label }))]}
               style={{ width: 190 }} />
             )}
@@ -487,6 +491,18 @@ export default function AccessPage() {
           // Sections in sidebar order; rows keep the order the server sends (the sidebar's).
           const sections = [];
           const forRole = editingRole ? editingRole.role : isNew ? newFields.role : editing.role;
+          if (isNew && forRole === 'owner') {
+            return (
+              <div style={{ ...S.card, padding: '14px 16px', borderLeft: '3px solid var(--gold)' }}>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>The owner has full access</div>
+                <div style={{ fontSize: 12.5, color: 'var(--gray-light)', lineHeight: 1.6 }}>
+                  Nothing to tick: the owner sees and runs the whole business, including staff, roles, customers,
+                  settings, terms and backups. They get an email to set their own password. There is one owner;
+                  after this, only they can hand the shop over.
+                </div>
+              </div>
+            );
+          }
           for (const [id, r] of Object.entries(rows)) {
             if (r.onlyRole && forRole !== r.onlyRole) continue;
             let sec = sections.find(x => x.name === r.section);

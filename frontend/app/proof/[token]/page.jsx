@@ -170,33 +170,36 @@ export default function ProofPage({ params }) {
 }
 
 const css = `
-  .pf-wrap { min-height: 100vh; background: #0f0f0f; padding: 2.5rem 1rem 4rem;
-             display: flex; justify-content: center; }
-  .pf-card { width: 100%; max-width: 560px; background: #171717;
-             border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 1.75rem; }
+  /* Light, like the email that opens it: a customer taps a white email and lands on the same look,
+     not a black page. Colours are fixed (not the dashboard theme) - the customer is not signed in. */
+  .pf-wrap { min-height: 100vh; background: #f4f4f2; padding: 2.5rem 1rem 4rem; color-scheme: light;
+             display: flex; justify-content: center; align-items: flex-start; }
+  .pf-card { width: 100%; max-width: 560px; background: #ffffff;
+             border: 1px solid rgba(0,0,0,.08); border-radius: 14px; padding: 1.75rem;
+             box-shadow: 0 1px 3px rgba(0,0,0,.04); }
   .pf-ref { font-size: .74rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-            color: #D4A843; margin-bottom: .4rem; }
-  .pf-title { font-size: 1.45rem; font-weight: 800; color: #f5f5f5; margin: 0 0 .5rem; }
-  .pf-lede { font-size: .92rem; line-height: 1.6; color: rgba(245,245,245,.65); margin: 0 0 1.25rem; }
+            color: #a67c1a; margin-bottom: .4rem; }
+  .pf-title { font-size: 1.45rem; font-weight: 800; color: #111111; margin: 0 0 .5rem; }
+  .pf-lede { font-size: .92rem; line-height: 1.6; color: #555555; margin: 0 0 1.25rem; }
   .pf-proofs { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1.25rem; }
-  .pf-img { width: 100%; border-radius: 10px; border: 1px solid rgba(255,255,255,.1); display: block; }
-  .pf-items { margin: 0 0 1.25rem; padding-left: 1.1rem; color: rgba(245,245,245,.7); font-size: .88rem; }
+  .pf-img { width: 100%; border-radius: 10px; border: 1px solid rgba(0,0,0,.1); display: block; }
+  .pf-items { margin: 0 0 1.25rem; padding-left: 1.1rem; color: #444444; font-size: .88rem; }
   .pf-items li { margin-bottom: .25rem; }
   .pf-label { display: block; font-size: .78rem; font-weight: 700; letter-spacing: .4px;
-              text-transform: uppercase; color: rgba(245,245,245,.55); margin-bottom: .35rem; }
-  .pf-area { width: 100%; min-height: 110px; background: rgba(255,255,255,.04);
-             border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: .7rem .85rem;
-             color: #f5f5f5; font-size: .95rem; font-family: inherit; line-height: 1.55;
-             margin-bottom: 1rem; resize: vertical; }
+              text-transform: uppercase; color: #6b6b6b; margin-bottom: .35rem; }
+  .pf-area { width: 100%; min-height: 110px; background: #fafaf8;
+             border: 1px solid rgba(0,0,0,.15); border-radius: 8px; padding: .7rem .85rem;
+             color: #111111; font-size: .95rem; font-family: inherit; line-height: 1.55;
+             margin-bottom: 1rem; resize: vertical; box-sizing: border-box; }
+  .pf-area:focus { outline: 2px solid #D4A843; outline-offset: 1px; }
   .pf-actions { display: flex; gap: .6rem; flex-wrap: wrap; }
   .pf-btn { flex: 1 1 auto; background: #D4A843; color: #1a1a1a; border: none; border-radius: 8px;
             padding: .85rem 1.2rem; font-weight: 700; font-size: .95rem; cursor: pointer;
             text-align: center; text-decoration: none; display: inline-block; }
   .pf-btn[disabled] { opacity: .6; cursor: wait; }
-  .pf-btn.ghost { background: transparent; color: rgba(245,245,245,.78);
-                  border: 1px solid rgba(255,255,255,.2); }
-  .pf-error { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.35); color: #fca5a5;
+  .pf-btn.ghost { background: #ffffff; color: #333333; border: 1px solid rgba(0,0,0,.2); }
+  .pf-error { background: #fdecea; border: 1px solid #f5c2bd; color: #b3261e;
               border-radius: 8px; padding: .65rem .8rem; font-size: .85rem; margin-bottom: 1rem; }
-  .pf-fine { font-size: .76rem; color: rgba(245,245,245,.42); margin: 1.1rem 0 0; line-height: 1.5; }
+  .pf-fine { font-size: .76rem; color: #7a7a7a; margin: 1.1rem 0 0; line-height: 1.5; }
   @media (max-width: 480px) { .pf-card { padding: 1.25rem; } }
 `;
