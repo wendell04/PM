@@ -700,13 +700,14 @@ export default function ProductDetailPage() {
         Back
       </button>
 
-      {/* Loading state */}
+      {/* Loading state. Drawn in a tint of the text colour: var(--dark2) is the page's own white on
+          the light storefront, so the skeleton was invisible and the page looked empty while loading. */}
       {loading && (
         <div style={{ display: 'flex', gap: '2rem',
           flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 400px' }}>
             <div style={{ aspectRatio: '1/1',
-              background: 'var(--dark2)',
+              background: 'color-mix(in srgb, var(--white) 8%, transparent)',
               borderRadius: '12px',
               border: '1px solid var(--border)',
               animation: 'pulse 1.5s ease-in-out infinite',
@@ -718,7 +719,7 @@ export default function ProductDetailPage() {
             {[...Array(5)].map((_, i) => (
               <div key={i} style={{
                 height: i === 0 ? '32px' : '16px',
-                background: 'var(--dark2)',
+                background: 'color-mix(in srgb, var(--white) 8%, transparent)',
                 borderRadius: '6px',
                 width: i === 1 ? '60%' : '100%',
                 animation: 'pulse 1.5s ease-in-out infinite',

@@ -369,6 +369,75 @@ class ProductController extends Controller
      * GET /api/products
      * Returns all active published products for storefront
      */
+    /**
+     * Every BOM and material the given products' availability needs, in two or three queries -
+     * the grid and the product page both work out stock from these. The product page used to do
+     * it one component at a time (a find per material per variant), which took four seconds.
+     *
+     * @return array{0: array, 1: array, 2: array}  [bomsByGroup, bomsById, inventoryMap]
+     */
+    private function availabilityMaps($products): array
+    {
+        // Batch-load all BOMs and Inventory (2-3 queries total)
+        $bomGroupNames    = [];
+        $individualBomIds = [];
+
+        foreach ($products as $p) {
+            if (!empty($p->bomGroupName)) {
+                $bomGroupNames[] = $p->bomGroupName;
+            } elseif (!empty($p->combinations)) {
+                foreach ($p->combinations as $combo) {
+                    if (!empty($combo['bomId'])) $individualBomIds[] = (string) $combo['bomId'];
+                }
+            } elseif (!empty($p->bomId)) {
+                $individualBomIds[] = (string) $p->bomId;
+            }
+        }
+
+        $toObjectId = function ($id) {
+            try { return new \MongoDB\BSON\ObjectId((string) $id); } catch (\Exception $e) { return null; }
+        };
+
+        $bomsByGroup = [];
+        $bomsById    = [];
+
+        if (!empty($bomGroupNames)) {
+            $groupBoms = \App\Models\BillOfMaterial::whereIn('productGroupName', array_unique($bomGroupNames))->get();
+            foreach ($groupBoms as $bom) {
+                $bomsByGroup[$bom->productGroupName][] = $bom;
+                $bomsById[(string) $bom->_id] = $bom;
+            }
+        }
+
+        if (!empty($individualBomIds)) {
+            $oids = array_values(array_filter(array_map($toObjectId, array_unique($individualBomIds))));
+            if (!empty($oids)) {
+                foreach (\App\Models\BillOfMaterial::whereIn('_id', $oids)->get() as $bom) {
+                    $bomsById[(string) $bom->_id] = $bom;
+                }
+            }
+        }
+
+        $inventoryIds = [];
+        foreach ($bomsById as $bom) {
+            foreach ($bom->components ?? [] as $component) {
+                if (!empty($component['inventoryId'])) $inventoryIds[] = (string) $component['inventoryId'];
+            }
+        }
+
+        $inventoryMap = [];
+        if (!empty($inventoryIds)) {
+            $oids = array_values(array_filter(array_map($toObjectId, array_unique($inventoryIds))));
+            if (!empty($oids)) {
+                foreach (Inventory::whereIn('_id', $oids)->get() as $inv) {
+                    $inventoryMap[(string) $inv->_id] = $inv;
+                }
+            }
+        }
+
+        return [$bomsByGroup, $bomsById, $inventoryMap];
+    }
+
     public function index(Request $request)
     {
         try {
@@ -396,62 +465,7 @@ class ProductController extends Controller
 
             $products = $query->orderBy('createdAt', 'desc')->get();
 
-            // Batch-load all BOMs and Inventory (2-3 queries total)
-            $bomGroupNames    = [];
-            $individualBomIds = [];
-
-            foreach ($products as $p) {
-                if (!empty($p->bomGroupName)) {
-                    $bomGroupNames[] = $p->bomGroupName;
-                } elseif (!empty($p->combinations)) {
-                    foreach ($p->combinations as $combo) {
-                        if (!empty($combo['bomId'])) $individualBomIds[] = (string) $combo['bomId'];
-                    }
-                } elseif (!empty($p->bomId)) {
-                    $individualBomIds[] = (string) $p->bomId;
-                }
-            }
-
-            $toObjectId = function ($id) {
-                try { return new \MongoDB\BSON\ObjectId((string) $id); } catch (\Exception $e) { return null; }
-            };
-
-            $bomsByGroup = [];
-            $bomsById    = [];
-
-            if (!empty($bomGroupNames)) {
-                $groupBoms = \App\Models\BillOfMaterial::whereIn('productGroupName', array_unique($bomGroupNames))->get();
-                foreach ($groupBoms as $bom) {
-                    $bomsByGroup[$bom->productGroupName][] = $bom;
-                    $bomsById[(string) $bom->_id] = $bom;
-                }
-            }
-
-            if (!empty($individualBomIds)) {
-                $oids = array_values(array_filter(array_map($toObjectId, array_unique($individualBomIds))));
-                if (!empty($oids)) {
-                    foreach (\App\Models\BillOfMaterial::whereIn('_id', $oids)->get() as $bom) {
-                        $bomsById[(string) $bom->_id] = $bom;
-                    }
-                }
-            }
-
-            $inventoryIds = [];
-            foreach ($bomsById as $bom) {
-                foreach ($bom->components ?? [] as $component) {
-                    if (!empty($component['inventoryId'])) $inventoryIds[] = (string) $component['inventoryId'];
-                }
-            }
-
-            $inventoryMap = [];
-            if (!empty($inventoryIds)) {
-                $oids = array_values(array_filter(array_map($toObjectId, array_unique($inventoryIds))));
-                if (!empty($oids)) {
-                    foreach (Inventory::whereIn('_id', $oids)->get() as $inv) {
-                        $inventoryMap[(string) $inv->_id] = $inv;
-                    }
-                }
-            }
+            [$bomsByGroup, $bomsById, $inventoryMap] = $this->availabilityMaps($products);
 
             $slugify = fn($name) => rtrim(preg_replace('/[^a-z0-9]+/', '-', strtolower($name ?? '')), '-');
 
@@ -502,7 +516,9 @@ class ProductController extends Controller
                 return $this->notFoundResponse('Product');
             }
 
-            $data          = array_merge($product->toArray(), $this->computeAvailability($product));
+            // Same batched lookup as the grid, so the page and the card agree and it is one pass.
+            [$bomsByGroup, $bomsById, $inventoryMap] = $this->availabilityMaps(collect([$product]));
+            $data          = array_merge($product->toArray(), $this->computeAvailabilityBatched($product, $bomsByGroup, $bomsById, $inventoryMap));
             $data['slug']  = $slugify($product->name ?? '');
 
             return $this->successResponse('Product fetched successfully.', $data);

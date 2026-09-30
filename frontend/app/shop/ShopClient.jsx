@@ -11,6 +11,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useCart } from './layout';
+import { useAuth } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
@@ -361,6 +362,30 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
       .finally(() => setReviewsLoading(false));
   }, [productId]);
 
+  // Where Customize goes: the order form, with the variant, quantity and options chosen here.
+  // Signed out, it says so and signs in right here; after signing in the customer lands on that
+  // form with the same choices. It used to go to the form anyway, which bounced a signed-out
+  // visitor back to the product page with a sign-in box over a still-loading page.
+  const { token: authToken } = useAuth();
+  const customizeHref = () => {
+    const qs = new URLSearchParams({ qty: String(qty) });
+    Object.entries(selVars || {}).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, String(v)); });
+    Object.entries(selOpts || {}).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, String(v)); });
+    return `/shop/products/${product.slug || toSlug(product.name)}/order?${qs.toString()}`;
+  };
+  const customizeButton = () => authToken
+    ? <Link href={customizeHref()} className="shop-qv-btn-cart">Customize This Product</Link>
+    : (
+      <button type="button" className="shop-qv-btn-cart" onClick={() => {
+        const returnPath = customizeHref();
+        onClose?.();
+        window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath } }));
+      }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginRight: 8, verticalAlign: '-2px' }} aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+        Login to Customize
+      </button>
+    );
+
   return (
     <div className="shop-qv-backdrop" onClick={onClose}>
       <div className="shop-qv-modal" ref={qvDrag.ref} onClick={e => e.stopPropagation()}>
@@ -403,8 +428,9 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
 
           {/* Right: details - mirrors product page layout */}
           <div className="shop-qv-details">
-            {/* Category + badges row */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+            {/* Category + badges row. Room is kept on the right for the close button, which sits over
+                this row - "Print to order" ran under it and was cut off. */}
+            <div className="shop-qv-headrow" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
               {(product.category || product.categoryName) && (
                 <div className="shop-qv-category">{product.category || product.categoryName}</div>
               )}
@@ -619,17 +645,7 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
                   <button className="shop-qv-btn-cart" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>Out of Stock</button>
                 ) : optsPending ? (
                   <button className="shop-qv-btn-cart" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>{optsPrompt} to continue</button>
-                ) : <Link
-                  href={(() => {
-                    const qs = new URLSearchParams({ qty: String(qty) });
-                    Object.entries(selVars || {}).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, String(v)); });
-                    Object.entries(selOpts || {}).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, String(v)); });
-                    return `/shop/products/${product.slug || toSlug(product.name)}/order?${qs.toString()}`;
-                  })()}
-                  className="shop-qv-btn-cart"
-                >
-                  Customize This Product
-                </Link>}
+                ) : customizeButton()}
                 <button className="shop-qv-btn-checkout" disabled={cantBuy || optsPending} onClick={handleAdd}
                   style={{ opacity: cantBuy ? 0.5 : 1, cursor: cantBuy ? 'not-allowed' : 'pointer' }}>
                   {cantBuy ? 'Out of Stock' : 'Buy it plain'}
@@ -658,18 +674,7 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
                 // The product page stops here until every option is answered; this link went through
                 // with Cut Type unchosen, and the order form had to guess.
                 <button className="shop-qv-btn-cart" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>{optsPrompt} to continue</button>
-              ) : <Link
-                href={(() => {
-                  const qs = new URLSearchParams({ qty: String(qty) });
-                  Object.entries(selVars || {}).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, String(v)); });
-                  // The chosen option travels too, as it does from the product page.
-                  Object.entries(selOpts || {}).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, String(v)); });
-                  return `/shop/products/${product.slug || toSlug(product.name)}/order?${qs.toString()}`;
-                })()}
-                className="shop-qv-btn-cart"
-              >
-                Customize This Product
-              </Link>
+              ) : customizeButton()
             ) : mode === 'inquiry' ? (
               // Price-on-request items can't be bought at a fixed price - send to the PDP to inquire,
               // never show Add to Cart / Checkout (would let the item be bought at ₱0).

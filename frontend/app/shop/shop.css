@@ -4625,6 +4625,8 @@ html.light .shop-active-clear:hover { color: #111; }
   transition: background 0.15s, color 0.15s;
 }
 .shop-qv-close:hover { background: rgba(0,0,0,0.12); color: #111; }
+/* The close button is placed over the first row of the details; that row leaves it room. */
+.shop-qv-headrow { padding-right: 40px; min-height: 32px; }
 
 .shop-qv-body {
   display: flex;
