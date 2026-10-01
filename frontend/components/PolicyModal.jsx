@@ -25,7 +25,7 @@ const DRAFTS = {
       { title: 'Who else sees it', body: 'Our couriers receive the delivery details needed to bring your order to you. Our payment provider receives what a payment needs. Nobody else receives your information, and we never sell it.' },
       { title: 'Your artwork', body: 'Files you upload are used to produce your order. We may show finished work as samples, but never a file that carries your name, photo or private details unless you tell us we may.' },
       { title: 'How long we keep it', body: 'Order records are kept for as long as our accounting obligations require. You may ask us to delete your account at any time; order records that the law requires us to keep will remain.' },
-      { title: 'Contact', body: 'Questions about your information: personalizemeprints.admin@gmail.com.' },
+      { title: 'Contact', body: 'Questions about your information: personalizemeprints@gmail.com.' },
     ],
   },
 };

@@ -42,7 +42,7 @@ class OrderStatusMail extends Mailable implements ShouldQueue
         string $trackingNumber = '',
         string $trackingUrl = '',
         string $orderUrl = '',
-        string $contactEmail = 'personalizemeprints.admin@gmail.com',
+        string $contactEmail = 'personalizemeprints@gmail.com',
         string $payUrl = '',
         string $payLabel = '',
         string $payNote = ''

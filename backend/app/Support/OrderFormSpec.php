@@ -113,7 +113,7 @@ class OrderFormSpec
             // opening this needs to know before anything else; the invitation to chat follows.
             // Every line of it is the owner's to rewrite in Settings.
             'description' => "Jpeg, PSD, PDF, PNG. Choose any format you want. 300 dpi or at least a clear design.\n"
-                . "E-mail your files to personalizemeprints.admin@gmail.com with Subject: DESIGN (your full name)\n"
+                . "E-mail your files to personalizemeprints@gmail.com with Subject: DESIGN (your full name)\n"
                 . "\n"
                 . "LAYOUT | DESIGN\n"
                 . "Prefer to chat? You can stay on this chat to send your inquiries or discuss your "
