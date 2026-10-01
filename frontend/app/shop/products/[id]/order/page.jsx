@@ -651,6 +651,9 @@ function CustomOrderInner() {
         variantName:         variantLabel ?? null,
         qty:                 quantity,
         unitPrice:           unitPrice ?? 0,
+        // The server prices the options from these; the once-per-order charge is shown at checkout.
+        options:             selectedOptions,
+        optionOrderAdd:      optionOrderAdd || 0,
         ...(lineSale ? { flashSaleId: String(lineSale.id ?? lineSale._id) } : {}),
         isCustom:            true,
         designUrl:           designFileUrl,
@@ -771,6 +774,7 @@ function CustomOrderInner() {
           termsSnapshot,
           termsAgreedAt: new Date().toISOString(),
         },
+        { selection: selectedOptions, unitAdd: optionUnitAdd, orderAdd: optionOrderAdd },
       );
       setAddedToCart(true);
     } catch (err) {
@@ -844,6 +848,7 @@ function CustomOrderInner() {
         variantName: variantLabel,
         qty: quantity,
         unitPrice: unitPrice ?? 0,
+        options: selectedOptions,
         isCustom: true,
         ...(designMode === 'upload'
           ? {

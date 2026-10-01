@@ -98,6 +98,8 @@ class PaymentController extends Controller
                 'items.*.variantId'           => 'nullable|string|max:128',
                 'items.*.variantName'         => 'nullable|string|max:160',
                 'items.*.qty'                 => 'required|integer|min:1',
+                'items.*.options'             => 'nullable|array|max:20',
+                'items.*.options.*'           => 'nullable|string|max:128',
                 'items.*.flashSaleId'         => 'nullable|string|max:24',
                 'voucherCode'                 => 'nullable|string|max:50',
                 'notes'                       => 'nullable|string|max:1000',
@@ -166,7 +168,14 @@ class PaymentController extends Controller
                     );
                 }
 
-                $lineTotal    = $unitPrice * $qty;
+                // The chosen options, priced here from the product's own groups. The tiers alone
+                // left them out: Kisscut showed +P5 a piece and the order was saved without it.
+                $opt = \App\Support\OptionPricing::price($product, $item['options'] ?? null, $item['variantName'] ?? null);
+                if ($opt['missing']) {
+                    return $this->errorResponse("Choose " . implode(' and ', $opt['missing']) . " for {$product->name} before checking out - open it again from your cart.", 422);
+                }
+                $unitPrice    = round($unitPrice + $opt['unit'], 2);
+                $lineTotal    = round($unitPrice * $qty + $opt['order'], 2);
                 $totalAmount += $lineTotal;
 
                 if ($appliedFlashSale) {
@@ -194,6 +203,8 @@ class PaymentController extends Controller
                     'unitPrice'   => $unitPrice,
                     'lineTotal'   => $lineTotal,
                     'flashSaleId' => $flashSaleId,
+                    'options'        => $opt['chosen'] ?: null,
+                    'optionOrderAdd' => $opt['order'] > 0 ? $opt['order'] : null,
                 ];
             }
 
@@ -722,6 +733,8 @@ class PaymentController extends Controller
                 'items.*.variantId'           => 'nullable|string|max:128',
                 'items.*.variantName'         => 'nullable|string|max:160',
                 'items.*.qty'                 => 'required|integer|min:1',
+                'items.*.options'             => 'nullable|array|max:20',
+                'items.*.options.*'           => 'nullable|string|max:128',
                 'items.*.flashSaleId'         => 'nullable|string|max:24',
                 'voucherCode'                 => 'nullable|string|max:50',
                 'notes'                       => 'nullable|string|max:1000',
@@ -820,7 +833,14 @@ class PaymentController extends Controller
                     return $this->errorResponse("No price configured for product '{$product->name}'.", 422);
                 }
 
-                $lineTotal    = $unitPrice * $qty;
+                // The chosen options, priced here from the product's own groups. The tiers alone
+                // left them out: Kisscut showed +P5 a piece and the order was saved without it.
+                $opt = \App\Support\OptionPricing::price($product, $item['options'] ?? null, $item['variantName'] ?? null);
+                if ($opt['missing']) {
+                    return $this->errorResponse("Choose " . implode(' and ', $opt['missing']) . " for {$product->name} before checking out - open it again from your cart.", 422);
+                }
+                $unitPrice    = round($unitPrice + $opt['unit'], 2);
+                $lineTotal    = round($unitPrice * $qty + $opt['order'], 2);
                 $totalAmount += $lineTotal;
 
                 if ($appliedFlashSale) $pendingFlashSaleIncrements[] = [$appliedFlashSale, $qty];
@@ -845,6 +865,8 @@ class PaymentController extends Controller
                     'unitPrice'       => $unitPrice,
                     'lineTotal'       => $lineTotal,
                     'flashSaleId'     => $flashSaleId,
+                    'options'        => $opt['chosen'] ?: null,
+                    'optionOrderAdd' => $opt['order'] > 0 ? $opt['order'] : null,
                     'designRequested' => (bool) ($item['designRequested'] ?? false),
                     'designFee'       => isset($item['designFee']) ? (float) $item['designFee'] : null,
                     'designUrl'       => $item['designUrl']   ?? null,

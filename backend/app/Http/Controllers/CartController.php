@@ -38,7 +38,7 @@ class CartController extends Controller
             $i['unitPrice'] = $unit;
             $i['lineTotal'] = isset($i['lineTotal']) && $i['lineTotal'] !== null
                 ? (float) $i['lineTotal']
-                : round($qty * $unit, 2);
+                : round($qty * $unit + (float) ($i['optionOrderAdd'] ?? 0), 2);
             return $i;
         }, $items);
     }
@@ -122,6 +122,12 @@ class CartController extends Controller
                 'items.*.minOrderQty' => 'nullable|integer|min:1',
                 'items.*.priceTiers' => 'nullable|array',
                 'items.*.flashSaleId' => 'nullable|string|max:128',
+                // The chosen options: without these the cart forgot them and checkout priced the line
+                // without its option charge (Kisscut +P5 a piece, saved at the plain tier price).
+                'items.*.options' => 'nullable|array|max:20',
+                'items.*.options.*' => 'nullable|string|max:128',
+                'items.*.optionUnitAdd' => 'nullable|numeric|min:0|max:100000',
+                'items.*.optionOrderAdd' => 'nullable|numeric|min:0|max:100000',
                 // The clickwrap acceptance, for the same reason as everything above it: the customer
                 // ticks "I have read and agree" on the product page, the acceptance rides along on the
                 // cart line - and then the very first sync dropped all three of these fields, because
@@ -213,6 +219,12 @@ class CartController extends Controller
                 'items.*.minOrderQty' => 'nullable|integer|min:1',
                 'items.*.priceTiers' => 'nullable|array',
                 'items.*.flashSaleId' => 'nullable|string|max:128',
+                // The chosen options: without these the cart forgot them and checkout priced the line
+                // without its option charge (Kisscut +P5 a piece, saved at the plain tier price).
+                'items.*.options' => 'nullable|array|max:20',
+                'items.*.options.*' => 'nullable|string|max:128',
+                'items.*.optionUnitAdd' => 'nullable|numeric|min:0|max:100000',
+                'items.*.optionOrderAdd' => 'nullable|numeric|min:0|max:100000',
                 // The clickwrap acceptance, for the same reason as everything above it: the customer
                 // ticks "I have read and agree" on the product page, the acceptance rides along on the
                 // cart line - and then the very first sync dropped all three of these fields, because

@@ -390,7 +390,8 @@ export default function CheckoutPage() {
 
   // ── Computed ──
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
-  const subtotal        = items.reduce((sum, i) => sum + (i.unitPrice * i.qty), 0);
+  // Per-piece options are inside unitPrice; a once-per-order option is added to its line once.
+  const subtotal        = items.reduce((sum, i) => sum + (i.unitPrice * i.qty) + (Number(i.optionOrderAdd) || 0), 0);
   // Custom item still needing a design file at checkout (not pre-uploaded and not design-service-requested)
   const hasCustomItem = items.some(i => i.isCustom === true && !i.designUrl && !i.designRequested);
   const voucherDiscount = appliedVoucher ? appliedVoucher.discountAmount : 0;
@@ -512,7 +513,7 @@ export default function CheckoutPage() {
   // when they differ (e.g. mug 50% + mousepad 30%) it is the exact per-line sum. The design fee is
   // separate (paid once, in full). Request goods are NO LONGER deferred.
   const goodsPayNow = items.reduce((sum, i) => {
-    const g = i.unitPrice * i.qty;
+    const g = i.unitPrice * i.qty + (Number(i.optionOrderAdd) || 0);
     const pct = lineDpPct(i);
     if (pct > 0 && !payFull) return sum + Math.round(g * pct / 100 * 100) / 100;
     return sum + g;                                     // ready-made / no-DP / Pay-in-full -> full line
@@ -767,6 +768,7 @@ export default function CheckoutPage() {
         variantName: i.variantName ?? null,
         qty: Math.max(1, parseInt(i.qty) || 1),
         unitPrice: i.unitPrice,
+        ...(i.options && Object.keys(i.options).length ? { options: i.options } : {}),
         ...(i.flashSaleId ? { flashSaleId: String(i.flashSaleId) } : {}),
         ...(i.designUrl ? { designUrl: i.designUrl } : {}),
         ...(i.designName ? { designName: i.designName } : {}),
@@ -1226,7 +1228,7 @@ export default function CheckoutPage() {
                     </div>
                   </div>
                   <div style={{ fontWeight: 800, fontSize: '0.92rem', whiteSpace: 'nowrap', color: 'var(--white)' }}>
-                    ₱{(item.unitPrice * item.qty).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₱{(item.unitPrice * item.qty + (Number(item.optionOrderAdd) || 0)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </div>
 

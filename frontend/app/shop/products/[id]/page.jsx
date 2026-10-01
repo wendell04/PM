@@ -352,7 +352,8 @@ export default function ProductDetailPage() {
         comboId,
         withOptionSuffix(resolveVariantName(selectedVariants), product, selectedOptions),
         saleForVariant ? (saleForVariant.id ?? saleForVariant._id ?? null) : null,
-        null
+        null,
+        { selection: selectedOptions, unitAdd: optionUnitAdd, orderAdd: optionOrderAdd }
       );
       setAddedToCart(true);
       setTimeout(() => setAddedToCart(false), 2500);
@@ -449,9 +450,12 @@ export default function ProductDetailPage() {
             downpaymentMinQty:    product.downpaymentMinQty ?? null,
           },
           variantId:    comboId,
-          variantName:  resolveVariantName(selectedVariants),
+          // With the options in the name and the selection beside it: the server prices them.
+          variantName:  withOptionSuffix(resolveVariantName(selectedVariants), product, selectedOptions),
           qty:          quantity,
           unitPrice:    resolvedPrice,
+          options:        selectedOptions,
+          optionOrderAdd: optionOrderAdd || 0,
           ...(fsId ? { flashSaleId: String(fsId) } : {}),
           designUrl:    null,
           designNotes:  null,

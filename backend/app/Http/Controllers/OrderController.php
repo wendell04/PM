@@ -132,6 +132,8 @@ class OrderController extends Controller
                 'items.*.variantId'           => 'nullable|string|max:128',
                 'items.*.variantName'         => 'nullable|string|max:160',
                 'items.*.qty'                 => 'required|integer|min:1',
+                'items.*.options'             => 'nullable|array|max:20',
+                'items.*.options.*'           => 'nullable|string|max:128',
                 'items.*.flashSaleId'         => 'nullable|string|max:24',
                 'items.*.designUrl'           => 'nullable|string|max:2048',
                 'items.*.designName'          => 'nullable|string|max:255',
@@ -212,7 +214,14 @@ class OrderController extends Controller
                     throw new \Exception("No price configured for product '{$product->name}'.");
                 }
 
-                $lineTotal    = $unitPrice * $qty;
+                // The chosen options, priced here from the product's own groups. The tiers alone
+                // left them out: Kisscut showed +P5 a piece and the order was saved without it.
+                $opt = \App\Support\OptionPricing::price($product, $item['options'] ?? null, $item['variantName'] ?? null);
+                if ($opt['missing']) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['items' => ["Choose " . implode(' and ', $opt['missing']) . " for {$product->name} before checking out - open it again from your cart."]]);
+                }
+                $unitPrice    = round($unitPrice + $opt['unit'], 2);
+                $lineTotal    = round($unitPrice * $qty + $opt['order'], 2);
                 $totalAmount += $lineTotal;
 
                 if ($appliedFlashSale) {
@@ -249,6 +258,8 @@ class OrderController extends Controller
                     'unitPrice'   => $unitPrice,
                     'lineTotal'   => $lineTotal,
                     'flashSaleId' => $flashSaleId,
+                    'options'        => $opt['chosen'] ?: null,
+                    'optionOrderAdd' => $opt['order'] > 0 ? $opt['order'] : null,
                     // The full artwork context has to survive here, not just the url - the
                     // online endpoint already carries it, and this COD path was dropping
                     // everything else, so the same line behaved differently by payment method.

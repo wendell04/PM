@@ -295,7 +295,7 @@ function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
   const handleAdd = () => {
     if (isOOS) return;
     const { productForCart, comboId: cid, variantLabel } = buildCart();
-    addToCart(productForCart, qty, cid, variantLabel, flashSale?._id ?? null);
+    addToCart(productForCart, qty, cid, variantLabel, flashSale?._id ?? null, null, { selection: selOpts, unitAdd: optUnitAdd, orderAdd: optOrderAdd });
     onClose();
   };
   const handleCheckout = () => {

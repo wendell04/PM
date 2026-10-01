@@ -95,7 +95,9 @@ export function CartProvider({ children }) {
   /**
    * Add item to cart
    */
-  const addToCart = useCallback(async (product, qty = 1, variantId = null, variantName = null, flashSaleId = null, designData = null) => {
+  // optionData: { selection, unitAdd, orderAdd } - the chosen options travel with the line so the
+  // server can price them, and a quantity change keeps them in the price.
+  const addToCart = useCallback(async (product, qty = 1, variantId = null, variantName = null, flashSaleId = null, designData = null, optionData = null) => {
     setIsCartLoading(true);
     try {
       const resolvedQty = Math.max(1, parseInt(qty) || 1);
@@ -116,7 +118,12 @@ export function CartProvider({ children }) {
         ...(variantName != null ? { variantName: String(variantName) } : {}),
         qty: resolvedQty,
         unitPrice: product.flatPrice || product.price || 0,
-        lineTotal: (product.flatPrice || product.price || 0) * resolvedQty,
+        lineTotal: (product.flatPrice || product.price || 0) * resolvedQty + (Number(optionData?.orderAdd) || 0),
+        ...(optionData?.selection && Object.keys(optionData.selection).length ? {
+          options: optionData.selection,
+          optionUnitAdd: Number(optionData.unitAdd) || 0,
+          optionOrderAdd: Number(optionData.orderAdd) || 0,
+        } : {}),
         ...(product.priceTiers?.length ? { priceTiers: product.priceTiers } : {}),
         image: variantImage || product.thumbnail || product.images?.[0] || null,
         isCustom: product.isCustom ?? false,
@@ -215,8 +222,9 @@ export function CartProvider({ children }) {
       if (item.lineId !== lineId) return item;
       const qty = Math.max(item.minOrderQty || 1, parseInt(newQty) || 1);
       const tierPrice = resolveTierPrice(item.priceTiers, qty, item.variantId);
-      const unitPrice = tierPrice ?? item.unitPrice;
-      return { ...item, qty, unitPrice, lineTotal: qty * unitPrice };
+      // The tier price is the plain band; the line's per-piece options go back on top of it.
+      const unitPrice = tierPrice != null ? tierPrice + (Number(item.optionUnitAdd) || 0) : item.unitPrice;
+      return { ...item, qty, unitPrice, lineTotal: qty * unitPrice + (Number(item.optionOrderAdd) || 0) };
     });
 
     // Optimistic update — reflects immediately in UI
