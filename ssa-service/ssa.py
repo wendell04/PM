@@ -11,20 +11,29 @@ def dominant_period(series, max_lag=None, acf_threshold=0.15):
     if max_lag is None:
         max_lag = n // 2
     max_lag = min(max_lag, n - 1)
-    s = series - np.mean(series)
+    # Detrend, not just centre. A linear trend dominates the ACF and masks any
+    # cycle of 26 or more, so annual seasonality on weekly data was never found:
+    # periods 26 and 52 returned None whenever a trend was present.
+    _t = np.arange(n, dtype=float)
+    try:
+        _slope, _icpt = np.polyfit(_t, np.asarray(series, dtype=float), 1)
+        s = np.asarray(series, dtype=float) - (_slope * _t + _icpt)
+    except Exception:
+        s = series - np.mean(series)
     var = np.var(s)
     if var == 0:
         return None
 
-    # FIX: Sparsity guard — if more than 70% of the series is zero, the ACF
-    # is dominated by a handful of large spikes rather than true seasonality.
-    # In that case the detected "period" is just the distance between two
-    # random spikes (e.g. period=25 from two Christmas-like events), which
-    # causes SSA to project those spikes forward as a recurring seasonal pattern.
-    # Returning None here forces the fallback L heuristic (min(26, n//2))
-    # which produces a more conservative, flat forecast closer to recent actuals.
+    # Sparsity guard: below half the periods carrying demand, the ACF is driven by
+    # a handful of large spikes rather than by season, and the "period" it returns
+    # is just the gap between two of them - which SSA then projects forward as a
+    # recurring pattern. Returning None forces the fallback L (min(26, n//2)) and a
+    # flatter forecast closer to recent actuals.
+    #
+    # The bar was 0.30 and that was not enough: between 30% and 50% non-zero a true
+    # period of 12 still came back as 71.
     nonzero_ratio = np.sum(series > 0) / len(series)
-    if nonzero_ratio < 0.30:
+    if nonzero_ratio < 0.50:
         return None  # too sparse for reliable ACF period detection
 
     acf = np.array([

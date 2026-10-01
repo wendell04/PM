@@ -3,6 +3,7 @@
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { businessDate, businessToday } from "@/lib/businessDate";
 import { CustomSelect, ICONS, SummaryCard, TabBar } from "../inventory-v2/shared";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -296,7 +297,7 @@ function buildMaterialDemand(inventoryId, taxonomy, sales, ledger = []) {
     plan.covered.forEach((c) =>
       basis.consumers.add(c.variantName ? `${c.productName} · ${c.variantName}` : c.productName),
     );
-    const ds = d.toISOString().split("T")[0];
+    const ds = businessDate(d);
     byDay[ds] = (byDay[ds] ?? 0) + units;
   });
 
@@ -396,7 +397,7 @@ function buildLedgerDemand(ledger) {
     if (!d || isNaN(d)) return;
     const qty = Math.abs(Number(h.quantity ?? 0));
     if (!(qty > 0)) return;
-    const ds = d.toISOString().split("T")[0];
+    const ds = businessDate(d);
     byDay[ds] = (byDay[ds] ?? 0) + qty;
   });
   return Object.entries(byDay)
@@ -420,12 +421,19 @@ function compareRates(ledgerRows, salesRows) {
   if (ledgerRows.length === 0) return null;
   const from = ledgerRows[0].date;
   const to = ledgerRows[ledgerRows.length - 1].date;
-  const weeks = Math.max(1, (new Date(to) - new Date(from)) / 604800000 + 1 / 7);
   const salesFrom = new Date(new Date(from).getTime() - PRODUCTION_LAG_DAYS * 86400000)
     .toISOString().split("T")[0];
+  // Each total is divided by ITS OWN window. Sales are summed from the production
+  // lag before the ledger opens - material is consumed before the sale records -
+  // but both used to be divided by the ledger's narrower span, so the sales rate
+  // carried an extra fortnight of demand over the same number of weeks. Two
+  // sources in perfect agreement came out 16.7% apart, close enough to the 25%
+  // threshold below to raise a false "these disagree" on a shorter history.
+  const weeksBetween = (a, b) =>
+    Math.max(1, (new Date(b) - new Date(a)) / 604800000 + 1 / 7);
   const sum = (rs, lo) => rs.filter((r) => r.date >= lo && r.date <= to).reduce((s, r) => s + r.value, 0);
-  const ledgerRate = sum(ledgerRows, from) / weeks;
-  const salesRate = sum(salesRows, salesFrom) / weeks;
+  const ledgerRate = sum(ledgerRows, from) / weeksBetween(from, to);
+  const salesRate = sum(salesRows, salesFrom) / weeksBetween(salesFrom, to);
   const denom = Math.max(ledgerRate, salesRate);
   return {
     ledgerRate: Math.round(ledgerRate * 100) / 100,
@@ -1090,7 +1098,7 @@ function bucketDemand(rows, periodType) {
   if (keys.length === 0) return [];
   const series = [];
   let cur = new Date(keys[0] + "T00:00:00Z");
-  const end = new Date(periodKey(new Date().toISOString().slice(0, 10)) + "T00:00:00Z");
+  const end = new Date(periodKey(businessToday()) + "T00:00:00Z");
   let guard = 0;
   while (cur <= end && guard < 1200) {
     series.push(map[cur.toISOString().slice(0, 10)] ?? 0);
@@ -1175,12 +1183,23 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, supplierL
   const coverage = d > 0 ? cov / d : null;        // periods of cover (null ≈ unlimited)
   const periodsToROP = d > 0 && cov > ROP ? (cov - ROP) / d : 0;
 
+  // The other end of the question the reorder point answers. The policy plans to
+  // cover the wait for delivery plus one buying trip; holding several times that,
+  // AND more than the order-up-to level, is stock that will sit. Same rule as
+  // apply/inventory-plan in the service - both must agree or the page and the
+  // stored plan will disagree about the same material.
+  const targetPeriods = L + R;
+  const overstocked = coverage != null && targetPeriods > 0
+    && coverage > targetPeriods * 3 && cov > orderUpTo;
+  const excessQty = overstocked ? Math.max(0, cov - orderUpTo) : 0;
+
   return {
     d, sigma, adi, cv2, cls, L, R, leadDays, leadSource, sigmaLeadDays, reviewDays: REVIEW_DAYS, daysPerPeriod,
     usingDefaultLead: !hasLead,
     SS: Math.round(SS), ROP: Math.round(ROP), orderUpTo: Math.round(orderUpTo),
     orderQty: Math.round(orderQty),
     coverage, periodsToROP, nPeriods: n, nzCount: nz.length,
+    overstocked, excessQty: Math.round(excessQty),
   };
 }
 
@@ -1249,6 +1268,9 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
   const scored = accuracy.mape_scored ?? null;
   const total = accuracy.mape_total ?? null;
   const mase = accuracy.mase ?? null;
+  // Already thresholded by the service, which applies a period-aware limit
+  // (6 weekly, 3 monthly, 1 annually) and returns 0 below it. Re-testing >= 6
+  // here would have hidden every monthly and annual gap.
   const gap = accuracy.training_gap ?? 0;
 
   if (mape != null) {
@@ -1277,7 +1299,7 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
           ? `tested on ${btN} ${btNz != null ? `periods (${btNz} with sales)` : "periods"}`
           : "insufficient data",
       color,
-      tooltip: gap >= 6
+      tooltip: gap > 0
         ? `The training history contains ${gap} periods in a row with nothing recorded. A period with no demand and a period nobody entered anything into look the same to the model, so it learns from a drop that may never have happened. Treat this figure as provisional until the history is continuous.`
         : (scored != null && total && scored < 4)
           ? `Averaged over only ${scored} ${scored === 1 ? "period" : "periods"} - the rest of the window had no sales, and MAPE cannot score those. Too few points to call it an accuracy.`
@@ -1304,14 +1326,22 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
     };
   }
 
+  // Two different silences: a window that ran and scored nothing, and a history
+  // too short for a backtest to run at all. The second was showing an empty
+  // accuracy area beside a forecast, saying nothing about being untested.
+  const neverRan = !btN || total === 0;
   return {
     value: null,
-    display: "N/A",
+    display: neverRan ? "NOT TESTED" : "N/A",
     label: "FORECAST ACCURACY",
-    sublabel: "no sales in backtest window",
+    sublabel: neverRan
+      ? "history too short to check this forecast against"
+      : "no sales in backtest window",
     color: "var(--gray)",
     tooltip:
-      "Accuracy could not be computed because all backtest weeks had zero actual sales. The model still produces a forecast, but there is no valid reference period to measure against.",
+      neverRan
+        ? "There is not enough history to hold any of it back and check this forecast against it, so it is untested - the model's best estimate from what exists, with nothing measuring how close it lands."
+        : "Accuracy could not be computed because all backtest weeks had zero actual sales. The model still produces a forecast, but there is no valid reference period to measure against.",
   };
 }
 
@@ -1522,9 +1552,7 @@ export default function SSAForecastPage() {
         setSalesTruncated(d.meta?.truncated === true);
         const map = {};
         sales.forEach((s) => {
-          const date = s.saleDate
-            ? new Date(s.saleDate).toISOString().split("T")[0]
-            : null;
+          const date = businessDate(s.saleDate);
           if (!date) return;
           if (!map[date]) map[date] = { revenue: 0, qty: 0 };
           map[date].revenue += s.totalPrice ?? 0;
@@ -1560,7 +1588,7 @@ export default function SSAForecastPage() {
         const sortedHistory = [...history]
           .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
           .map(h => ({
-            date:  h.createdAt ? new Date(h.createdAt).toISOString().split("T")[0] : null,
+            date:  businessDate(h.createdAt),
             value: h.remainingQty ?? 0,
           }))
           .filter(h => h.date !== null);
@@ -1856,7 +1884,7 @@ export default function SSAForecastPage() {
       setStockoutDate(null);
       return;
     }
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = businessToday();
     const fcDates  = result.forecast?.dates  || [];
     const fcValues = result.forecast?.values || [];
     // Keep remaining as a float, the way the depletion chart does. Rounding
@@ -2001,21 +2029,21 @@ export default function SSAForecastPage() {
   const fcDatesForPicker = result?.forecast?.dates || [];
   const pickerMatchIdx  = pickerDate ? fcDatesForPicker.indexOf(pickerDate) : -1;
   const pickerMatchDate = pickerMatchIdx >= 0 ? fcDatesForPicker[pickerMatchIdx] : null;
-  const todayIso        = new Date().toISOString().slice(0, 10);
+  const todayIso        = businessToday();
   // Compare against the START of the current period, not the raw date - otherwise
   // a monthly forecast point dated "2026-06-01" is wrongly skipped when today is
   // June 22, pushing the Today marker onto July instead of the current month.
   const todayPeriodStart = (() => {
-    const now = new Date();
+    // Anchored to the shop's calendar day, then stepped as a date string.
+    const today = businessToday();
     const pt = submittedConfig?.period?.type || forecastPeriod.type;
-    if (pt === "monthly")
-      return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
-    if (pt === "annually") return `${now.getUTCFullYear()}-01-01`;
+    if (pt === "monthly")  return `${today.slice(0, 7)}-01`;
+    if (pt === "annually") return `${today.slice(0, 4)}-01-01`;
     // weekly: Monday of the current week (matches backend W-MON labels)
+    const now = new Date(today + "T00:00:00Z");
     const day = now.getUTCDay(); // 0=Sun..6=Sat
-    const mon = new Date(now);
-    mon.setUTCDate(now.getUTCDate() + (day === 0 ? -6 : 1 - day));
-    return mon.toISOString().slice(0, 10);
+    now.setUTCDate(now.getUTCDate() + (day === 0 ? -6 : 1 - day));
+    return now.toISOString().slice(0, 10);
   })();
   const todayRefDate    = fcDatesForPicker.find((d) => d >= todayPeriodStart) ?? null;
   // Actual local "today" for the marker label (weekly snaps the line to the
@@ -2153,7 +2181,7 @@ export default function SSAForecastPage() {
   };
 
   const getInventoryChartData = () => {
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = businessToday();
     const data = [];
 
     // Left side: forward-fill stock history events into a staircase up to today
@@ -2583,6 +2611,42 @@ export default function SSAForecastPage() {
                       <span className="k">Algorithm</span>
                       <span className="v" style={{ fontSize: "11px", letterSpacing: "0.5px", padding: "2px 6px", border: "1px solid var(--border)", borderRadius: "6px" }}>SSA</span>
                     </div>
+                    {/* Direction metrics. The service has computed these all along and
+                        nothing showed them. They are NOT classification scores: each
+                        backtest period is called high or low against the median actual,
+                        and these say how often that call was right. Labelled as such,
+                        because "precision 0.5" invites being read as something else. */}
+                    {result?.accuracy?.precision != null && (
+                      <>
+                        <div className="ssa-model-row">
+                          <span className="k">
+                            <span className="ssa-tooltip">
+                              Busy periods caught
+                              <span style={{ marginLeft: "4px", opacity: 0.5, display: "inline-flex", verticalAlign: "middle" }}>{ICONS.info}</span>
+                              <span className="ssa-tooltip-text" style={{ left: 0, transform: "none", width: 230 }}>
+                                Of the periods that really were busier than usual, how many the
+                                forecast also called busy (recall). Of the ones it called busy,
+                                how many really were (precision). F1 combines the two.
+                              </span>
+                            </span>
+                          </span>
+                          <span className="v">
+                            {Math.round(result.accuracy.recall * 100)}%
+                            <span style={{ color: "var(--gray)", fontWeight: 400, marginLeft: "4px" }}>
+                              of {result.accuracy.mape_total ?? "-"}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="ssa-model-row">
+                          <span className="k">Right when it said busy</span>
+                          <span className="v">{Math.round(result.accuracy.precision * 100)}%</span>
+                        </div>
+                        <div className="ssa-model-row">
+                          <span className="k">F1 (the two combined)</span>
+                          <span className="v">{result.accuracy.f1?.toFixed(2) ?? "-"}</span>
+                        </div>
+                      </>
+                    )}
                     <div className="ssa-model-row">
                       <span className="k">Last run</span>
                       <span className="v">
@@ -2680,6 +2744,7 @@ export default function SSAForecastPage() {
               result?.is_high_volatility ?? false,
             );
             const mae = result?.accuracy?.mae;
+            const rmse = result?.accuracy?.rmse;
             const fcDatesM = result?.forecast?.dates || [];
             const horizonRange = fcDatesM.length
               ? `${formatDateLabel(fcDatesM[0], submittedConfig?.period?.type, true)} - ${formatDateLabel(fcDatesM[fcDatesM.length - 1], submittedConfig?.period?.type, true)}`
@@ -2696,7 +2761,7 @@ export default function SSAForecastPage() {
             let invStockoutDate = null, invPeriodsToOut = null;
             if (isInvCard && result && availableQty != null) {
               const fcD = result.forecast?.dates || [];
-              const todayStr = new Date().toISOString().split("T")[0];
+              const todayStr = businessToday();
               // Float, not per-period rounding - see the stockout effect above.
               let rem = availableQty, n = 0;
               for (let i = 0; i < fcD.length; i++) {
@@ -2902,7 +2967,16 @@ export default function SSAForecastPage() {
                           : "N/A"}
                       </div>
                       <div style={{ fontSize: "12px", color: "var(--gray)", marginTop: "4px" }}>
+                        {/* RMSE sits beside MAE rather than in a card of its own: same units,
+                            same question. It weighs one large miss more heavily, which is the
+                            difference worth seeing on spiky demand. */}
                         Mean absolute error
+                        {rmse != null && (
+                          <>
+                            {" · RMSE "}
+                            {fmtSourceValue(rmse, submittedConfig?.source ?? dataSource, true)}
+                          </>
+                        )}
                       </div>
                     </>
                   ) : (
@@ -2980,6 +3054,49 @@ export default function SSAForecastPage() {
                   Based on current demand trends, <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong> is projected to run out around{" "}
                   <strong style={{ color: "var(--white)" }}>{formatDateLabel(stockoutDate, submittedConfig?.period?.type)}</strong>.{" "}
                   Consider restocking soon.
+                </span>
+              </div>
+            )}
+            {isInvMode && invPolicy?.overstocked && (
+              <div className="ssa-warning-banner">
+                <span style={{ display: "inline-flex", flexShrink: 0, color: "var(--st-blue-fg)" }}>{ICONS.info}</span>
+                <span>
+                  <strong style={{ color: "var(--st-blue-fg)" }}>More than you are likely to use -</strong>{" "}
+                  at the current rate this is about{" "}
+                  <strong style={{ color: "var(--white)" }}>
+                    {Math.round(invPolicy.coverage)} {forecastPeriod.unit}
+                  </strong>{" "}of cover, against the {Math.round(invPolicy.L + invPolicy.R)} it needs to
+                  cover delivery and the next buying trip - about{" "}
+                  <strong style={{ color: "var(--white)" }}>{invPolicy.excessQty}</strong> over the order-up-to
+                  level. Not urgent; just money sitting still, and worth skipping on the next order.
+                </span>
+              </div>
+            )}
+            {result?.accuracy?.anomaly && (
+              <div className="ssa-warning-banner">
+                <span style={{ display: "inline-flex", flexShrink: 0, color: "var(--st-amber-fg)" }}>{ICONS.warn}</span>
+                <span>
+                  <strong style={{ color: "var(--st-amber-fg)" }}>
+                    The last {forecastPeriod.unit.replace(/s$/, "")} came in {result.accuracy.anomaly.direction}
+                    {" "}what was expected -
+                  </strong>{" "}
+                  {fmtSourceValue(result.accuracy.anomaly.actual, submittedConfig?.source ?? dataSource, true)}{" "}
+                  against{" "}
+                  {fmtSourceValue(result.accuracy.anomaly.expected, submittedConfig?.source ?? dataSource, true)},
+                  about {result.accuracy.anomaly.times_typical}x this model&apos;s usual miss. Worth a look
+                  before trusting the next forecast - one unusual period pulls it along.
+                </span>
+              </div>
+            )}
+            {(result?.accuracy?.training_gap ?? 0) > 0 && (
+              <div className="ssa-warning-banner">
+                <span style={{ display: "inline-flex", flexShrink: 0, color: "var(--st-amber-fg)" }}>{ICONS.warn}</span>
+                <span>
+                  <strong style={{ color: "var(--st-amber-fg)" }}>Part of the history is blank -</strong>{" "}
+                  {result.accuracy.training_gap} periods in a row have nothing recorded. The forecast cannot
+                  tell those apart from periods with no demand, so it learns from a drop that may
+                  never have happened. Treat the accuracy figure as provisional until the history
+                  runs without a break.
                 </span>
               </div>
             )}
@@ -3398,7 +3515,7 @@ export default function SSAForecastPage() {
                               <Area
                                 type="monotone"
                                 dataKey="Band"
-                                name="Confidence range"
+                                name="Likely range"
                                 stroke="none"
                                 fill="var(--gold)"
                                 fillOpacity={0.14}
@@ -3658,7 +3775,7 @@ export default function SSAForecastPage() {
                         {(() => {
                           const fcDates  = result.forecast?.dates  || [];
                           const fcValues = result.forecast?.values || [];
-                          const todayStr = new Date().toISOString().split("T")[0];
+                          const todayStr = businessToday();
                           const startStock = availableQty ?? 0;   // reserved stock is spoken for
                           const reorderPt = invPolicy?.ROP ?? (inventoryList.find((it) => (it._id ?? it.id) === selectedInventoryId)?.minStockLevel ?? 0);
                           const tblRows = [];
@@ -3847,14 +3964,15 @@ export default function SSAForecastPage() {
 
                 <div className="ssa-metrics-grid">
                   {[
-                    { label: "Total Customers", value: rfmResult.total_customers },
+                    { label: "Total Customers", value: rfmResult.total_customers,
+                      sub: "identified buyers only" },
                     { label: "Groups Found",  value: rfmResult.summary?.length ?? 0 },
                     { label: "Largest Group", value: [...(rfmResult.summary ?? [])].sort((a,b) => b.count - a.count)[0]?.segment ?? "-" , valueSize: "14px" },
                     { label: "Avg Spend / Customer", value: (rfmResult.customers?.length ?? 0) > 0
                       ? "₱" + (rfmResult.customers.reduce((s,c) => s + (c.monetary ?? 0), 0) / rfmResult.customers.length).toLocaleString("en-US",{maximumFractionDigits:0})
                       : "-" },
-                  ].map(({ label, value, valueSize }) => (
-                    <SummaryCard key={label} label={label} value={value} valueSize={valueSize} />
+                  ].map(({ label, value, valueSize, sub }) => (
+                    <SummaryCard key={label} label={label} value={value} sub={sub} valueSize={valueSize} />
                   ))}
                 </div>
 
@@ -3865,6 +3983,10 @@ export default function SSAForecastPage() {
                       What each customer group means for your business - and what to do about it.
                     </p>
                   </div>
+                  <p style={{ fontSize: "12px", color: "var(--gray)", margin: "-8px 0 16px" }}>
+                    Only sales that carry a customer email can be grouped - a walk-in with no email
+                    cannot be told apart from any other, so counter sales are not represented here.
+                  </p>
                   <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
                     {[...(rfmResult.summary ?? [])].sort((a,b) => b.total_monetary - a.total_monetary).map((seg) => (
                       <div key={seg.segment} style={{

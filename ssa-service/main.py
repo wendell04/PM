@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import logging
 
 import pandas as pd
@@ -83,18 +83,21 @@ class ForecastRequest(BaseModel):
 class SaleRow(BaseModel):
     customerEmail: str
     totalPrice: float
-    saleDate: str = None   # optional: null dates are coerced to NaT and dropped (matches ServiceRow)
-    orderKey: str = None   # distinct-order id so Frequency counts orders, not line items
+    # Optional[str], not str: the handler coerces a null date to NaT and drops the
+    # row, but a bare `str = None` types the field as str, so Pydantic refused the
+    # null before that code ever ran and the caller got a 422 instead.
+    saleDate: Optional[str] = None
+    orderKey: Optional[str] = None   # distinct-order id so Frequency counts orders, not line items
 
 class RFMRequest(BaseModel):
     sales: List[SaleRow]
-    reference_date: str = None
+    reference_date: Optional[str] = None
 
 class ServiceRow(BaseModel):
     productName: str
     totalPrice: float
     quantity: int = 1
-    saleDate: str = None
+    saleDate: Optional[str] = None
 
 class ServiceSegmentRequest(BaseModel):
     sales: List[ServiceRow]
@@ -102,7 +105,9 @@ class ServiceSegmentRequest(BaseModel):
 class ComparativePeriod(BaseModel):
     period: str
     actual: float
-    forecast: float = None
+    # Same trap: /api/comparative filters out periods with no forecast, which
+    # means it expects nulls - but `float = None` rejected them at the door.
+    forecast: Optional[float] = None
 
 class ComparativeRequest(BaseModel):
     series: List[ComparativePeriod]
@@ -405,6 +410,16 @@ async def forecast(req: ForecastRequest):
         else:
             safe_max = min(10, max(3, n // 4))
 
+        # Tie the offer to the evidence. N/2 alone let the service offer 52 weekly
+        # periods validated on 8, and 10 annual periods validated on 2. Two times
+        # the backtest window is the most that can be defended from it.
+        if forecast_type == "weekly":
+            _bt_est = min(max(4, n // 5), 8)
+        elif forecast_type == "monthly":
+            _bt_est = min(max(3, n // 5), 6)
+        else:
+            _bt_est = max(1, min(12, n - 10))
+        safe_max = min(safe_max, _bt_est * 2)
         safe_max = max(1, safe_max)
 
         if forecast_periods > safe_max:
@@ -418,7 +433,10 @@ async def forecast(req: ForecastRequest):
             )
 
         # ── SSA window length ─────────────────────────────────────────────────
-        period = dominant_period(df["Value"].values, acf_threshold=0.15)
+        # On the unfloored series: zeros are replaced by peak/4 before SSA runs, and
+        # differencing that substitution creates short-lag correlation that is an
+        # artefact of the floor. It returned period=2 on the live weekly data.
+        period = dominant_period(original_values, acf_threshold=0.15)
         if forecast_type == "weekly":
             L = (period * 2) if (period and 3 <= period <= 26) else min(26, max(2, n // 2))
         elif forecast_type == "monthly":
@@ -511,7 +529,7 @@ async def forecast(req: ForecastRequest):
         # Same shape as the scored dict below, so a caller never has to tell a
         # missing key from a real None. Everything here means "not measured".
         accuracy        = {"mape": None, "mae": None, "backtest_n": bt_periods,
-                           "mape_scored": 0, "mape_total": 0, "mase": None,
+                           "mape_scored": 0, "mape_total": 0, "mase": None, "rmse": None, "anomaly": None,
                            "training_gap": 0, "mape_reliable": False}
         backtest_series = {"dates": [], "actuals": [], "predictions": []}
 
@@ -568,6 +586,28 @@ async def forecast(req: ForecastRequest):
 
                 mape_val = compute_mape(act, pred)
                 mae_val  = float(np.mean(np.abs(act - pred)))
+                # RMSE alongside MAE: the manuscript names both, and it costs one line.
+                # It punishes a single large miss harder than MAE does, which on a
+                # spike-driven series is the difference worth seeing.
+                rmse_val = float(np.sqrt(np.mean((act - pred) ** 2)))
+
+                # Unusual period: the most recent scored period judged against how
+                # far this model normally misses. The backtest is already a
+                # forecast-versus-actual comparison, so the last point in it is the
+                # freshest answer to "did the shop behave the way we expected?".
+                # Three times the window's own mean error is the line - a quiet
+                # month and a spike month both trip it, which is the point.
+                anomaly = None
+                if len(act) >= 3 and mae_val > 0:
+                    _last_err = float(abs(act[-1] - pred[-1]))
+                    if _last_err > 3.0 * mae_val:
+                        anomaly = {
+                            "actual":    round(float(act[-1]), 2),
+                            "expected":  round(float(pred[-1]), 2),
+                            "error":     round(_last_err, 2),
+                            "times_typical": round(_last_err / mae_val, 1),
+                            "direction": "above" if act[-1] > pred[-1] else "below",
+                        }
 
                 # How much evidence is behind that MAPE. It is averaged only over
                 # periods with a non-zero actual, so a window of 8 with 3 quiet
@@ -615,9 +655,16 @@ async def forecast(req: ForecastRequest):
                         _gap_run = _run
 
                 # Precision / Recall / F1 for direction accuracy (within 20% threshold)
+                # A period with no demand cannot be "within 20%" of anything. It used
+                # to be handed an error of 0.0, which passed the threshold, so every
+                # quiet week counted as a perfect forecast - three of eight zero weeks
+                # plus one real hit is where the uniform 50% hit rate came from.
                 _bt_threshold = 0.20
-                _bt_pct_err   = np.where(act > 0, np.abs(act - pred) / act, 0.0)
-                _bt_within    = _bt_pct_err <= _bt_threshold
+                _bt_nz        = act > 0
+                _bt_pct_err   = np.zeros_like(act, dtype=float)
+                if _bt_nz.any():
+                    _bt_pct_err[_bt_nz] = np.abs(act[_bt_nz] - pred[_bt_nz]) / act[_bt_nz]
+                _bt_within    = _bt_nz & (_bt_pct_err <= _bt_threshold)
                 _bt_median    = float(np.median(act))
                 _bt_act_high  = act > _bt_median
                 _bt_fc_high   = pred > _bt_median
@@ -631,13 +678,16 @@ async def forecast(req: ForecastRequest):
                 accuracy = {
                     "mape":              round(mape_val, 2) if mape_val is not None else None,
                     "mae":               round(mae_val, 2),
+                    "rmse":              round(rmse_val, 2),
+                    "anomaly":           anomaly,
                     "mae_ratio":         mae_ratio,
                     "backtest_n":        bt_periods if forecast_type != "annually" else int(n_agg),
                     "backtest_nz_count": int(np.sum(act > 0)) if forecast_type == "annually" else bt_nz,
                     "precision":         round(_bt_prec, 4),
                     "recall":            round(_bt_rec, 4),
                     "f1":                round(_bt_f1, 4),
-                    "hit_rate":          round(float(np.mean(_bt_within)) * 100, 2),
+                    "hit_rate":          round(float(np.mean(_bt_within[_bt_nz])) * 100, 2) if _bt_nz.any() else None,
+                    "hit_rate_scored":   int(_bt_nz.sum()),
                     "mape_scored":       mape_scored,
                     "mape_total":          mape_total,
                     "mase":              mase_val,
@@ -808,16 +858,12 @@ async def forecast(req: ForecastRequest):
             )
         daily_rev.columns = ["Date", "Value"]
 
-        # Floor zero-sale days (sales only — inventory already forward-filled)
-        if not is_sparse:
-            _daily_nz = daily_rev["Value"].values[daily_rev["Value"].values > 0]
-            if len(_daily_nz) > 0:
-                _daily_peak  = float(np.max(_daily_nz))
-                _daily_floor = _daily_peak / 4.0
-                _daily_zero  = daily_rev["Value"].values == 0
-                if _daily_zero.any():
-                    daily_rev = daily_rev.copy()
-                    daily_rev.loc[_daily_zero, "Value"] = _daily_floor
+        # No floor here. SSA gets its own floored copy in df["Value"]; this series
+        # is only ever drawn. Flooring it put peak/4 on every quiet day, so the
+        # history line on the chart never touched zero - on the live revenue data
+        # that was 1,055 of 1,367 days drawn at 4,500 when the shop took nothing.
+        # trend_daily and seas_daily are interpolated from the training
+        # decomposition, so the residual below still sums to what is displayed.
 
         train_ts    = df["Date"].astype(np.int64).values
         daily_ts    = daily_rev["Date"].astype(np.int64).values
@@ -1126,6 +1172,20 @@ async def inventory_plan(req: InventoryPlanRequest):
         reorder_now = available <= rop
         days_to_reorder = 0.0 if (reorder_now or per_day <= 0) else (available - rop) / per_day
         stockout_days = None if per_day <= 0 else available / per_day
+
+        # Overstock: the other end of the same question the reorder point answers.
+        # The policy plans to cover lead time plus one review cycle; holding several
+        # times that is money sitting on a shelf, and on a perishable or a design
+        # that dates, it is money that may never come back. Three times the target
+        # window is the line - under that, a buffer; over it, a surplus worth naming.
+        target_days   = float(req.lead_time_days) + float(req.review_days)
+        cover_days    = stockout_days
+        overstocked   = bool(
+            cover_days is not None and target_days > 0
+            and cover_days > target_days * 3 and available > s_up
+        )
+        excess_qty    = max(0.0, available - s_up) if overstocked else 0.0
+        weeks_of_cover = None if per_week <= 0 else available / per_week
         today = pd.Timestamp.now().normalize()
         stockout_date = (today + pd.Timedelta(days=float(stockout_days))).strftime("%Y-%m-%d") \
             if stockout_days is not None else None
@@ -1167,6 +1227,9 @@ async def inventory_plan(req: InventoryPlanRequest):
             "decision": {
                 "restock_qty":     int(round(restock)),
                 "reorder_now":     bool(reorder_now),
+                "overstocked":     overstocked,
+                "excess_qty":      int(round(excess_qty)),
+                "weeks_of_cover":  round(weeks_of_cover, 1) if weeks_of_cover is not None else None,
                 "days_to_reorder": int(round(days_to_reorder)),
                 "stockout_date":   stockout_date,
                 "basis":           basis,
@@ -1217,8 +1280,13 @@ async def customer_segments(req: RFMRequest):
             try:
                 return pd.qcut(series, q=5, labels=labels, duplicates="drop").astype(int)
             except ValueError:
-                ranked = series.rank(method="first", ascending=ascending)
-                return pd.cut(ranked, bins=5, labels=[1, 2, 3, 4, 5]).astype(int)
+                # "first" breaks ties by row order, so five customers with identical
+                # spend scored 1,2,3,4,5 by position and could land in different
+                # segments - and the assignment changed if the query returned rows
+                # in another order. "average" gives equal customers equal scores.
+                ranked = series.rank(method="average", ascending=ascending)
+                return pd.cut(ranked, bins=5, labels=[1, 2, 3, 4, 5],
+                              include_lowest=True).astype(int)
 
         rfm["r_score"] = _qscore(rfm["recency"],   ascending=False)
         rfm["f_score"] = _qscore(rfm["frequency"],  ascending=True)
@@ -1278,10 +1346,18 @@ async def service_segments(req: ServiceSegmentRequest):
         total_rev = float(summary["total_revenue"].sum())
         summary["revenue_share"] = (summary["total_revenue"] / total_rev).round(4) if total_rev > 0 else 0.0
 
-        cumulative = summary["total_revenue"].cumsum() / total_rev
+        # Guarded: the share above is, this was not, so a period with no revenue
+        # divided by zero and silently classed every product C.
+        cumulative = (
+            (summary["total_revenue"].cumsum() / total_rev) if total_rev > 0
+            else pd.Series(1.0, index=summary.index)
+        )
+        # The product that CROSSES 70% belongs in A - it is part of the block that
+        # makes up the first 70%, not the start of the next one. Same at 90%.
+        prev = cumulative.shift(1).fillna(0.0)
         summary["abc_class"] = "C"
-        summary.loc[cumulative <= 0.70,                        "abc_class"] = "A"
-        summary.loc[(cumulative > 0.70) & (cumulative <= 0.90),"abc_class"] = "B"
+        summary.loc[prev < 0.70,                      "abc_class"] = "A"
+        summary.loc[(prev >= 0.70) & (prev < 0.90),   "abc_class"] = "B"
 
         services_out = summary.to_dict(orient="records")
 
@@ -1329,14 +1405,21 @@ async def comparative_analysis(req: ComparativeRequest):
         threshold = req.threshold_pct / 100.0
 
         abs_err  = np.abs(actuals - forecasts)
-        pct_err  = np.where(actuals > 0, abs_err / actuals, 0.0)
-        within   = pct_err <= threshold
+        nz       = actuals > 0
+        pct_err  = np.zeros_like(actuals, dtype=float)
+        if nz.any():
+            pct_err[nz] = abs_err[nz] / actuals[nz]
+        # Same rule as the backtest: a zero actual is not a hit, it is unscoreable.
+        within   = nz & (pct_err <= threshold)
 
-        mape = float(np.mean(pct_err[actuals > 0]) * 100) if np.any(actuals > 0) else None
+        mape = float(np.mean(pct_err[nz]) * 100) if nz.any() else None
         mae  = float(np.mean(abs_err))
         rmse = float(np.sqrt(np.mean((actuals - forecasts) ** 2)))
         bias = float(np.mean(forecasts - actuals))
-        bias_pct = float(np.mean((forecasts - actuals) / actuals[actuals > 0]) * 100) if np.any(actuals > 0) else None
+        # Both sides masked. Dividing an N-element difference by an M-element
+        # actuals[actuals > 0] raised ValueError on any zero actual, which is 26%
+        # of the weekly series - so this endpoint answered 500 on real data.
+        bias_pct = float(np.mean((forecasts[nz] - actuals[nz]) / actuals[nz]) * 100) if nz.any() else None
 
         median_act   = float(np.median(actuals))
         act_high     = actuals   > median_act
@@ -1377,7 +1460,8 @@ async def comparative_analysis(req: ComparativeRequest):
                 "recall":        round(recall,    4),
                 "f1":            round(f1,         4),
                 "accuracy":      round(acc_cls,    4),
-                "hit_rate":      round(float(np.mean(within)) * 100, 2),
+                "hit_rate":      round(float(np.mean(within[nz])) * 100, 2) if nz.any() else None,
+                "hit_rate_scored": int(nz.sum()),
                 "threshold_pct": req.threshold_pct,
             },
         }
