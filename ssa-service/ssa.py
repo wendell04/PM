@@ -56,7 +56,9 @@ class SSA:
         self.K = self.N - self.L + 1
         self.X = np.column_stack([self.tseries[i:i+self.L] for i in range(self.K)])
         self.U, self.Sigma, self.VT = np.linalg.svd(self.X)
-        self.d = np.linalg.matrix_rank(self.X)
+        # No matrix_rank here: it ran a second full SVD for a value nothing reads.
+        # Cheap on a 197-week series (0.2 ms) but a quarter of construction time on
+        # a long one, and the backtest builds one of these per window.
 
     def reconstruct(self, components):
         if isinstance(components, int):

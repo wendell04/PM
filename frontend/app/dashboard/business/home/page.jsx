@@ -25,6 +25,7 @@ import SsaMiniChart from '@/components/dashboard/SsaMiniChart';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { businessDate } from "@/lib/businessDate";
 import { S, ICONS, SummaryCard, EmptyState, Note } from '../inventory-v2/shared';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
 import { orderNo } from '@/lib/orderNumber';
@@ -535,7 +536,10 @@ export default function StaffHome() {
     if (!salesLoaded || !Array.isArray(sales) || !sales.length) return undefined;
     const revMap = {}, qtyMap = {};
     for (const sale of sales) {
-      const d = sale.saleDate ? new Date(sale.saleDate).toISOString().split('T')[0] : null;
+      // Shop's clock, not UTC. This series is what Home sends to SSA, and both the
+      // forecast page and the nightly job bucket on the Manila day - three readings
+      // of the same sales is two too many.
+      const d = businessDate(sale.saleDate);
       if (!d) continue;
       revMap[d] = (revMap[d] ?? 0) + Number(sale.totalPrice ?? 0);
       qtyMap[d] = (qtyMap[d] ?? 0) + Number(sale.quantity ?? 0);
@@ -962,10 +966,16 @@ export default function StaffHome() {
                       </div>
                     ))}
                     <div style={{ fontSize: 11, color: 'var(--gray)', marginLeft: 'auto', maxWidth: 280, lineHeight: 1.5 }}>
-                      {ssa.data_quality?.is_low_confidence
-                        ? 'Low confidence - too few periods to trust yet.'
+                      {/* mape_reliable is the service's own verdict on that figure - too few scored
+                            periods, or a blank stretch in the training window. Without it Home
+                            stated as fact what the forecast page marks low confidence. */}
+                        {ssa.data_quality?.is_low_confidence || ssa.accuracy?.mape_reliable === false
+                        ? 'Low confidence - not enough clean history to trust this yet.'
                         : ssa.accuracy?.mape != null
-                          ? 'Backtested MAPE ' + Number(ssa.accuracy.mape).toFixed(1) + '%.'
+                          ? 'Backtested MAPE ' + Number(ssa.accuracy.mape).toFixed(1) + '%'
+                            + (ssa.accuracy.mape_scored != null && ssa.accuracy.mape_total
+                                ? ' over ' + ssa.accuracy.mape_scored + ' of ' + ssa.accuracy.mape_total + ' periods.'
+                                : '.')
                           : 'Projected from your own sales history.'}{' '}
                       {allows('forecast') && (<span onClick={() => router.push('/dashboard/business/ssa-forecast')}
                         style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>Full forecast</span>)}
