@@ -85,7 +85,14 @@ export default function PhoneInput({ value = '', onChange, error, defaultCountry
       const example = getExampleNumber(country, phoneExamples);
       if (example?.nationalNumber) maxNational = example.nationalNumber.length;
     } catch { /* keep the E.164 ceiling */ }
-    const digits = raw.replace(/\D/g, '').slice(0, maxNational);
+    // Pasted or autofilled the way people write it - "0912 345 6789" or "+63 912..." - the trunk 0
+    // or the country code came along and the last digit was cut off instead. Drop them first.
+    let all = raw.replace(/\D/g, '');
+    const cc = getCountryCallingCode(country);
+    if (all.length > maxNational && all.startsWith(cc)) all = all.slice(cc.length);
+    if (all.length > maxNational && all.startsWith('0')) all = all.slice(1);
+    if (all.length === maxNational && all.startsWith('0') && country === 'PH') all = all.slice(1);
+    const digits = all.slice(0, maxNational);
     // Format as the user types, using the selected country's own rules.
     const pretty = new AsYouType(country).input(digits);
     setNational(pretty);
@@ -130,6 +137,8 @@ export default function PhoneInput({ value = '', onChange, error, defaultCountry
         </button>
         <input
           type="tel"
+          name="tel-national"
+          autoComplete="tel-national"
           placeholder="912 345 6789"
           value={national}
           onChange={e => handleNumber(e.target.value)}

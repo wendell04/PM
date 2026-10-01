@@ -928,7 +928,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col">
             <div>
               <label style={labelStyle}>Label <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span></label>
-              <input type="text" maxLength={30} value={formData.label} onChange={e => handleInputChange('label', e.target.value)} placeholder="e.g. Home, Office" style={formErrors.label ? inputErrorStyle : inputStyle} />
+              <input type="text" name="address-label" autoComplete="off" maxLength={30} value={formData.label} onChange={e => handleInputChange('label', e.target.value)} placeholder="e.g. Home, Office" style={formErrors.label ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.label)}
             </div>
             <div>
@@ -1010,12 +1010,12 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col">
             <div>
               <label style={labelStyle}>House/Unit No. <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" maxLength={40} value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} onBlur={refinePin} placeholder="e.g. 168 or Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
+              <input type="text" name="address-line1" autoComplete="address-line1" maxLength={40} value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} onBlur={refinePin} placeholder="e.g. 168 or Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.house_number)}
             </div>
             <div>
               <label style={labelStyle}>Subdivision / Village <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span></label>
-              <input type="text" maxLength={80} value={formData.subdivision} onChange={e => handleInputChange('subdivision', e.target.value)} placeholder="e.g. Greenville Subd." style={inputStyle} />
+              <input type="text" name="address-line3" autoComplete="address-line3" maxLength={80} value={formData.subdivision} onChange={e => handleInputChange('subdivision', e.target.value)} placeholder="e.g. Greenville Subd." style={inputStyle} />
             </div>
           </div>
 
@@ -1023,12 +1023,12 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col-wide">
             <div>
               <label style={labelStyle}>Street <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" maxLength={80} value={formData.street} onChange={e => handleInputChange('street', e.target.value)} onBlur={refinePin} placeholder="e.g. General Luis St." style={formErrors.street ? inputErrorStyle : inputStyle} />
+              <input type="text" name="address-line2" autoComplete="address-line2" maxLength={80} value={formData.street} onChange={e => handleInputChange('street', e.target.value)} onBlur={refinePin} placeholder="e.g. General Luis St." style={formErrors.street ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.street)}
             </div>
             <div>
               <label style={labelStyle}>ZIP Code <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" inputMode="numeric" maxLength={4} value={formData.zip} onChange={e => handleInputChange('zip', e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="e.g. 1400" style={formErrors.zip ? inputErrorStyle : inputStyle} />
+              <input type="text" name="postal-code" autoComplete="postal-code" inputMode="numeric" maxLength={4} value={formData.zip} onChange={e => handleInputChange('zip', e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="e.g. 1400" style={formErrors.zip ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.zip)}
             </div>
           </div>
@@ -1037,6 +1037,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div>
             <label style={labelStyle}>Landmark / Delivery Notes <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional - the nearest landmark, or instructions for the rider)</span></label>
             <textarea
+              name="delivery-notes" autoComplete="off"
               value={formData.delivery_notes}
               onChange={e => handleInputChange('delivery_notes', e.target.value.slice(0, 300))}
               placeholder="e.g. Across SM Fairview. Green gate beside the sari-sari store, ring the bell on arrival."
