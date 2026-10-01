@@ -153,6 +153,39 @@
                 </table>
               @endif
 
+              @if ($breakdown)
+                {{-- What is owed, laid out like the Payment Received email: the total, what has been
+                     paid, what is left, and where the delivery fee stands (it is outside the total). --}}
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                  style="background:#f7f7f5;border:1px solid #e5e3de;border-radius:10px;border-collapse:separate;border-spacing:0;margin-bottom:16px;">
+                  <tr>
+                    <td colspan="2" align="left" style="padding:12px 18px 6px;font-size:11px;color:#6b6b6b;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Balance</td>
+                  </tr>
+                  <tr>
+                    <td align="left" style="padding:5px 18px;font-size:13px;color:#444444;">Order total</td>
+                    <td align="right" style="padding:5px 18px;font-size:13px;color:#111111;white-space:nowrap;">&#8369;{{ number_format($breakdown['total'], 2) }}</td>
+                  </tr>
+                  <tr>
+                    <td align="left" style="padding:5px 18px;font-size:13px;color:#444444;">Paid so far</td>
+                    <td align="right" style="padding:5px 18px;font-size:13px;font-weight:700;color:#1a7f3c;white-space:nowrap;">&#8369;{{ number_format($breakdown['paid'], 2) }}</td>
+                  </tr>
+                  <tr>
+                    <td align="left" style="padding:5px 18px 10px;font-size:13px;font-weight:700;color:#444444;">Still due</td>
+                    <td align="right" style="padding:5px 18px 10px;font-size:15px;font-weight:800;color:#111111;white-space:nowrap;">&#8369;{{ number_format($breakdown['balance'], 2) }}</td>
+                  </tr>
+                  @if (!empty($breakdown['delivery']))
+                  <tr>
+                    <td align="left" style="padding:10px 18px 14px;border-top:1px solid #e5e3de;font-size:12px;color:#6b6b6b;vertical-align:top;">
+                      Delivery fee<br><span style="font-size:11px;">{{ $breakdown['delivery']['note'] }}</span>
+                    </td>
+                    <td align="right" style="padding:10px 18px 14px;border-top:1px solid #e5e3de;font-size:12px;font-weight:700;color:#111111;white-space:nowrap;vertical-align:top;">
+                      {{ $breakdown['delivery']['amount'] > 0 ? '₱' . number_format($breakdown['delivery']['amount'], 2) : '-' }}
+                    </td>
+                  </tr>
+                  @endif
+                </table>
+              @endif
+
               @if ($payUrl)
                 {{-- The one thing to do next, as the button; the order itself stays a link below it. --}}
                 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 10px;">

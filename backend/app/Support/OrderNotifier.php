@@ -242,22 +242,39 @@ final class OrderNotifier
      * same deposit and delivery-fee choices as My Orders. Empty on COD, a settled or cancelled order,
      * or with online payment off - the email then keeps just the My Orders link.
      *
-     * @return array{0:string,1:string,2:string} [payUrl, payLabel, payNote]
+     * The breakdown is worked out from the same summary the pay page uses, so the email and the
+     * page can never show two different amounts.
+     *
+     * @return array{0:string,1:string,2:string,3:array} [payUrl, payLabel, payNote, breakdown]
      */
     private static function payButton(Order $order): array
     {
         try {
             $s = app(\App\Http\Controllers\PayLinkController::class)->summary($order);
-            if ($s['balance'] <= 0 || $s['cod'] || $s['cancelled'] || !$s['methods']) return ['', '', ''];
-            $first = $s['downpaymentPercent'] ? $s['downpaymentAmount'] : $s['balance'];
+            if ($s['balance'] <= 0 || $s['cod'] || $s['cancelled'] || !$s['methods']) return ['', '', '', []];
+            $dp    = (bool) $s['downpaymentPercent'];
+            $first = $dp ? $s['downpaymentAmount'] : $s['balance'];
+            // The delivery fee sits outside the total, so it gets its own line saying where it stands.
+            $fee = (float) ($order->courierFee ?? 0);
+            $delivery = null;
+            if ($order->freeDelivery ?? false) {
+                $delivery = ['amount' => 0.0, 'note' => 'Free on this order'];
+            } elseif (($order->courierFeePaid ?? false) && $fee > 0) {
+                $delivery = ['amount' => (float) ($order->courierFeePaidAmount ?? $fee), 'note' => 'Paid'];
+            } elseif ($fee > 0) {
+                $delivery = ['amount' => $fee, 'note' => ($order->courierFeeOnDelivery ?? true)
+                    ? 'Not paid - add it when you pay, or hand it to the rider in cash'
+                    : 'Not paid - due with this payment (parcel courier)'];
+            }
             return [
                 \App\Support\PayLink::url($order),
-                'Pay ₱' . number_format($first, 2),
-                ($s['downpaymentPercent'] ? 'Or pay the full ₱' . number_format($s['balance'], 2) . '. ' : '')
+                $dp ? 'Pay ₱' . number_format($first, 2) : 'Pay the ₱' . number_format($s['balance'], 2) . ' balance',
+                ($dp ? 'Or pay the full ₱' . number_format($s['balance'], 2) . '. ' : '')
                     . self::methodsText($s['methods']) . ' - no sign-in needed.',
+                ['total' => $s['total'], 'paid' => $s['paid'], 'balance' => $s['balance'], 'delivery' => $delivery],
             ];
         } catch (\Throwable $e) {
-            return ['', '', ''];
+            return ['', '', '', []];
         }
     }
 
@@ -310,7 +327,7 @@ final class OrderNotifier
                 $name = trim((string) ($order->userSnapshot['name'] ?? ''));
                 $base = rtrim((string) config('app.frontend_url', ''), '/');
                 // Only the reminder (the night before the hold runs out) carries the Pay button.
-                [$payUrl, $payLabel, $payNote] = $reminder && $base !== '' ? self::payButton($order) : ['', '', ''];
+                [$payUrl, $payLabel, $payNote] = $reminder && $base !== '' ? self::payButton($order) : ['', '', '', []];
                 Mail::to($email)->send(new \App\Mail\OrderStatusMail(
                     firstName:   $name !== '' ? explode(' ', $name)[0] : 'Customer',
                     orderId:     (string) $order->_id,
@@ -346,7 +363,7 @@ final class OrderNotifier
             // and the last moment to say so is before it leaves.
             $feeNote = '';
             if ($fee > 0.009 && !$paid && in_array($key, ['ready_for_delivery', 'for_delivery'], true)) {
-                $amount  = 'P' . number_format($fee, 2);
+                $amount  = '₱' . number_format($fee, 2);
                 // Once it has left, "pay it before we send the order out" is a promise already broken,
                 // and My Orders closes the online option for a rider who collects - so the only thing
                 // left to say is the cash.
@@ -415,8 +432,10 @@ final class OrderNotifier
                 $base = rtrim((string) config('app.frontend_url', ''), '/');
                 // When paying is what happens next, the email carries the button for it: the no-sign-in
                 // pay page, with the same deposit and delivery-fee choices as My Orders.
-                [$payUrl, $payLabel, $payNote] = $key === 'ready_for_delivery' && $base !== ''
-                    ? self::payButton($order) : ['', '', ''];
+                [$payUrl, $payLabel, $payNote, $breakdown] = $key === 'ready_for_delivery' && $base !== ''
+                    ? self::payButton($order) : ['', '', '', []];
+                // The breakdown carries the delivery fee line, so the separate note would say it twice.
+                if ($breakdown) $feeNote = '';
                 Mail::to($email)->send(new \App\Mail\OrderStatusMail(
                     firstName:      $name !== '' ? explode(' ', $name)[0] : 'Customer',
                     orderId:        (string) $order->_id,
@@ -430,7 +449,8 @@ final class OrderNotifier
                     orderUrl:       $base !== '' ? $base . '/shop/orders-history?order=' . $order->_id : '',
                     payUrl:         $payUrl,
                     payLabel:       $payLabel,
-                    payNote:        $payNote
+                    payNote:        $payNote,
+                    breakdown:      $breakdown
                 ));
             }
 
