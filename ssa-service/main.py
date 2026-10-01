@@ -69,6 +69,34 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "Accept", "ngrok-skip-browser-warning"],
 )
 
+# ── The shop's clock ─────────────────────────────────────────────────────────
+# Every "now" in this service used to be a bare pd.Timestamp.now(), which is the
+# HOST's local time. The backend declares 'timezone' => 'Asia/Manila'
+# (backend/config/app.php), the dashboard buckets sales on that same clock
+# (frontend/lib/businessDate.js), and incoming Mongo dates are normalised to UTC
+# further down - so "now" was the one thing in the pipeline reading a different
+# calendar from the data it was compared against.
+#
+# It never showed here, because this machine is on Manila time. The service has
+# no deployment config yet (see the note in frontend/.env.production), and the
+# day it gets one on an ordinary UTC host this would have shifted "last complete
+# month" back by one, moved the weekly forecast start and gap_offset by a week,
+# and put stockout_date a day out - for the eight hours a day the UTC date lags
+# Manila's. Setting TZ on the host would fix it too, but silently and only until
+# someone forgets; naming the zone here means the service cannot be deployed
+# wrong.
+BUSINESS_TZ = os.getenv("SSA_BUSINESS_TZ", "Asia/Manila")
+
+
+def business_now() -> pd.Timestamp:
+    """Now, on the shop's clock, tz-naive.
+
+    Naive on purpose: the period labels and date columns this is compared
+    against are tz-naive, and mixing the two raises in pandas.
+    """
+    return pd.Timestamp.now(tz=BUSINESS_TZ).tz_localize(None)
+
+
 class DataRow(BaseModel):
     date: str
     value: float
@@ -252,7 +280,7 @@ def _compute_last_period_value(
 ) -> float:
     """Return the most meaningful 'last period' revenue value for display."""
     dates_dt = pd.to_datetime(dates)
-    now = pd.Timestamp.now()
+    now = business_now()
 
     if forecast_type == "annually":
         # Sum of last complete calendar year (avoids partial current year)
@@ -621,8 +649,22 @@ async def forecast(req: ForecastRequest):
                 # an actual is zero, so the quiet periods count instead of being
                 # dropped - which is the honest way to score a series that has
                 # them. Below 1.0 beats the naive baseline.
+                #
+                # The scale has to be measured at the granularity the error is.
+                # An annual forecast trains on MONTHLY buckets (agg_rule "MS") and
+                # only aggregates to years to score, so mae_val is on annual totals
+                # while this series is still monthly. Dividing one by the other is a
+                # unit mismatch: a forecast that IS the naive baseline scored ~32
+                # instead of ~1, so every annual forecast read as hopeless.
                 mase_val = None
                 _tv = np.asarray(original_values[:bt_start], dtype=float)
+                if forecast_type == "annually" and _tv.size > 0:
+                    _tv = (
+                        pd.Series(_tv, index=pd.to_datetime(df["Date"].values[:bt_start]))
+                        .resample("YS").sum().values
+                    )
+                # Fewer than two periods at the scored granularity gives no step to
+                # measure, and None is better than a number built on one difference.
                 if _tv.size >= 2:
                     _naive = float(np.mean(np.abs(np.diff(_tv))))
                     if _naive > 0:
@@ -722,7 +764,7 @@ async def forecast(req: ForecastRequest):
         gap_offset = 0
 
         if forecast_type == "weekly":
-            today_monday = pd.Timestamp.now().normalize()
+            today_monday = business_now().normalize()
             today_monday -= pd.Timedelta(days=today_monday.dayofweek)
             natural_start = last_date + pd.Timedelta(weeks=1)
             fc_start  = max(natural_start, today_monday)
@@ -731,7 +773,7 @@ async def forecast(req: ForecastRequest):
             extended_steps = gap_weeks + forecast_periods
             fc_dates = pd.date_range(start=fc_start, periods=forecast_periods, freq="W-MON")
         elif forecast_type == "monthly":
-            this_month     = pd.Timestamp.now().replace(day=1).normalize()
+            this_month     = business_now().replace(day=1).normalize()
             natural_start_m = last_date + pd.DateOffset(months=1)
             fc_start_m     = max(natural_start_m, this_month)
             gap_months     = max(0, (fc_start_m.year - natural_start_m.year) * 12
@@ -1186,7 +1228,7 @@ async def inventory_plan(req: InventoryPlanRequest):
         )
         excess_qty    = max(0.0, available - s_up) if overstocked else 0.0
         weeks_of_cover = None if per_week <= 0 else available / per_week
-        today = pd.Timestamp.now().normalize()
+        today = business_now().normalize()
         stockout_date = (today + pd.Timedelta(days=float(stockout_days))).strftime("%Y-%m-%d") \
             if stockout_days is not None else None
 
