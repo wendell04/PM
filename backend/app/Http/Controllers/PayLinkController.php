@@ -33,6 +33,7 @@ class PayLinkController extends Controller
         if (!$order) return $this->errorResponse('This payment link has expired or is not valid.', 410);
         $s = $this->summary($order);
         if ($s['cancelled']) return $this->errorResponse('This order was cancelled - there is nothing to pay.', 422);
+        if ($s['holdEnded']) return $this->errorResponse(\App\Support\PaymentHold::message($order), 422);
         if ($s['cod']) return $this->errorResponse('This order is paid on delivery - there is nothing to pay online.', 422);
         if ($s['balance'] <= 0) return $this->errorResponse('This order is already fully paid.', 422);
         $owner = User::find($order->userId);
@@ -141,6 +142,10 @@ class PayLinkController extends Controller
             'items'     => collect($order->items ?? [])->take(6)->map(fn ($i) => trim(($i['productName'] ?? $i['name'] ?? 'Item') . (!empty($i['variantName']) ? ' - ' . $i['variantName'] : '')) . ' x' . (int) ($i['qty'] ?? $i['quantity'] ?? 1))->values(),
             'methods'   => PaymentMethod::enabledOnline(),
             'cancelled' => in_array(strtolower((string) ($order->orderStatus ?? '')), ['cancelled', 'returned'], true),
+            // Past the hold but not yet swept by the 3 AM job: closed all the same.
+            'holdEnded'    => \App\Support\PaymentHold::lapsed($order),
+            'heldUntil'    => \App\Support\PaymentHold::until($order),
+            'cancelReason' => (string) ($order->cancelReason ?? $order->cancelledReason ?? ''),
         ];
     }
 }

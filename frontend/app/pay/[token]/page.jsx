@@ -125,9 +125,20 @@ export default function PayPage() {
     <div className="py-ref">Order {data.orderRef}</div>
   </>);
 
+  // Past the hold: the shop has let the order and its materials go, so it cannot be paid. Said
+  // plainly with the date, not as a payment that failed.
+  if (data.holdEnded || (data.cancelled && /not paid|hold/i.test(data.cancelReason || ''))) return shell(<>{head}
+    <h1 className="py-title">The hold on this order has ended</h1>
+    <p className="py-lede">
+      We held this order{data.heldUntil ? ` until ${data.heldUntil}` : ''} for payment, and it was not paid in time, so it can no longer be paid.
+      If you still want it, message us in your order chat and we will set it up again.
+    </p>
+    <a className="py-btn ghost" href="/shop/orders-history">Open My Orders</a>
+  </>);
+
   if (data.cancelled) return shell(<>{head}
     <h1 className="py-title">This order was cancelled</h1>
-    <p className="py-lede">There is nothing to pay. If this is a mistake, message us from My Orders.</p>
+    <p className="py-lede">{data.cancelReason ? `${data.cancelReason} ` : ''}There is nothing to pay. If this is a mistake, message us from My Orders.</p>
   </>);
 
   // Back from paying a deposit: it went through, and the rest is due later.

@@ -1146,6 +1146,15 @@ function CustomOrderInner() {
                   <p style={{ margin: '0 0 18px', fontSize: '0.9rem', fontWeight: 700, color: '#e05252', lineHeight: 1.6, textAlign: 'center' }}>
                     Until it is approved and paid, your order is on hold and the delivery countdown has not started.
                   </p>
+                  {/* The two deadlines, before money changes hands - the shop's own settings, so the
+                      customer is never surprised by a cancellation they were not told could happen. */}
+                  {designMode === 'request' && (
+                  <p style={{ margin: '-8px 0 18px', fontSize: '0.84rem', color: 'var(--gray)', lineHeight: 1.6, textAlign: 'center' }}>
+                    You have {Number(storeSettings?.proofReplyDays ?? 14)} days to answer the proof, and{' '}
+                    {Number(storeSettings?.depositDueDays ?? 7)} days to pay once you approve it. After that the order is
+                    cancelled and the held materials are released - the design fee is kept for the work done.
+                  </p>
+                  )}
                   <label style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--white)' }}>
                     <input type="checkbox" checked={holdUnderstood} onChange={e => setHoldUnderstood(e.target.checked)}
                       style={{ width: 18, height: 18, accentColor: 'var(--gold)', cursor: 'pointer' }} />

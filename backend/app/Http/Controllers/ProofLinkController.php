@@ -43,6 +43,12 @@ class ProofLinkController extends Controller
                 // Nothing paid for the goods yet: approving leads to a payment, not straight to the
                 // printer, and the page has to say which before the button is pressed.
                 'payFirst'     => ($order->paymentStatus ?? 'unpaid') === 'unpaid',
+                // Cancelled (the hold ran out, the proof went unanswered, or either side cancelled):
+                // the page shows why instead of buttons that would act on a closed order.
+                'closed'       => in_array(strtolower((string) ($order->orderStatus ?? '')), ['cancelled', 'returned'], true),
+                'closedReason' => (string) ($order->cancelReason ?? $order->cancelledReason ?? ''),
+                'holdEnded'    => $status === 'approved' && \App\Support\PaymentHold::lapsed($order),
+                'heldUntil'    => \App\Support\PaymentHold::until($order),
                 // Once approved, what is owed can be paid right here too - the same no-sign-in link
                 // the reminder email carries. Only while something is owed online.
                 'payUrl'       => $status === 'approved' ? $this->payUrlFor($order) : null,
@@ -75,6 +81,13 @@ class ProofLinkController extends Controller
             'decision' => 'required|string|in:approve,revision',
             'notes'    => 'nullable|string|max:1000',
         ]);
+
+        if (in_array(strtolower((string) ($order->orderStatus ?? '')), ['cancelled', 'returned'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This order was cancelled, so the proof can no longer be answered. Message us in your order chat if you still want it.',
+            ], 409);
+        }
 
         if (in_array((string) ($order->designStatus ?? ''), ['approved', 'revision_requested'], true)) {
             return response()->json([

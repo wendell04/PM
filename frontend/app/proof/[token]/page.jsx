@@ -102,6 +102,21 @@ export default function ProofPage({ params }) {
     </div>
   </>);
 
+  // A cancelled order - the hold ran out, the proof went unanswered, or it was cancelled - cannot be
+  // approved back to life from an old email. Say why, and how to get it going again.
+  if (data?.closed || data?.holdEnded) return shell(<>
+    <h1 className="pf-title">{data.closed ? 'This order is closed' : 'The hold on this order has ended'}</h1>
+    <p className="pf-lede">
+      {data.closed
+        ? (data.closedReason ? `${data.closedReason} ` : `Order ${data.orderRef} was cancelled, so this proof can no longer be answered. `)
+        : `We held order ${data.orderRef}${data.heldUntil ? ` until ${data.heldUntil}` : ''} for payment, and it was not paid in time, so it can no longer be paid. `}
+      If you still want it, message us in your order chat and we will set it up again.
+    </p>
+    <div className="pf-actions">
+      <a className="pf-btn ghost" href="/shop/orders-history">Open My Orders</a>
+    </div>
+  </>);
+
   if (data?.answered) return shell(<>
     <h1 className="pf-title">You have already answered this</h1>
     <p className="pf-lede">

@@ -5258,7 +5258,16 @@ class OrderController extends Controller
 
                 if (!$response->successful()) {
                     Log::warning('adminUploadDesign: Cloudinary error', ['body' => $response->body()]);
-                    return response()->json(['message' => 'Failed to upload design to Cloudinary.'], 500);
+                    // Said in the owner's terms: which file, how big, what the limit is and what to do.
+                    // "Failed to upload design to Cloudinary" named a service and offered no way forward.
+                    $why = (string) ($response->json()['error']['message'] ?? '');
+                    $mb  = number_format($file->getSize() / 1048576, 1);
+                    if (stripos($why, 'File size too large') !== false) {
+                        $isVideo = str_starts_with((string) $file->getMimeType(), 'video/');
+                        return response()->json(['message' => "\"{$file->getClientOriginalName()}\" is {$mb} MB, over the "
+                            . ($isVideo ? '100 MB limit for videos. Trim it or send a shorter clip.' : '10 MB limit for images. Save it smaller (JPG, or a lower resolution) and send it again.')], 422);
+                    }
+                    return response()->json(['message' => "\"{$file->getClientOriginalName()}\" could not be uploaded just now. Try again in a minute - nothing was sent to the customer."], 502);
                 }
 
                 $uploadedUrls[] = $response->json()['secure_url'];

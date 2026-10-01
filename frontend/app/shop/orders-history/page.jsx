@@ -342,7 +342,7 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
 }
 
 // ─── CustomOrderTracker ─────────────────────────────────
-function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStatus, items = [], productionJobs = [], quoted = false, cancel = {} }) {
+function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStatus, items = [], productionJobs = [], quoted = false, cancel = {}, holdOver = false }) {
   // A mixed cart can hold an uploaded design AND a requested one in the same order, but the order
   // carries a single designType - so calling the whole order "Upload Design" was a lie about half of
   // it. Detect the mix from the lines and fall back to the request track, whose stages are a superset.
@@ -486,7 +486,7 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
         </div>
       )}
       <ItemProgressNote jobs={productionJobs} />
-      {orderStatus === 'awaiting_payment' && (
+      {orderStatus === 'awaiting_payment' && !holdOver && (
         <div style={{ marginTop: '14px', padding: '10px 14px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', fontSize: '0.8rem', color: '#f59e0b' }}>
           Payment required to move to production. Use the Pay Now button.
         </div>
@@ -565,6 +565,11 @@ function cardBrand(num) {
 }
 
 // ─── Main Page ──────────────────────────────────────────
+// An approved proof is held until paymentDueAt; after it the order is let go (same rule as the server's PaymentHold).
+const holdEnded = (o) => !!o && (o.paymentStatus ?? 'unpaid') === 'unpaid' && !!o.paymentDueAt
+  && new Date(o.paymentDueAt) < new Date()
+  && !['cancelled', 'Cancelled', 'returned', 'Returned'].includes(o.orderStatus);
+
 export default function OrdersHistoryPage() {
   const { token, currentUser } = useAuth();
   const { addToCart } = useCart();
@@ -1522,7 +1527,8 @@ export default function OrdersHistoryPage() {
                     <div style={{ paddingBottom: '4px' }}>
                       {selectedOrder.isCustomOrder ? (
                         <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} paymentStatus={selectedOrder.paymentStatus} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs} quoted={quotedArtwork(selectedOrder)}
-                          cancel={{ cancelledBy: selectedOrder.cancelledBy, cancelledReason: selectedOrder.cancelledReason, refundOwed: selectedOrder.refundOwed, refunds: selectedOrder.refunds }} />
+                          cancel={{ cancelledBy: selectedOrder.cancelledBy, cancelledReason: selectedOrder.cancelledReason, refundOwed: selectedOrder.refundOwed, refunds: selectedOrder.refunds }}
+                          holdOver={holdEnded(selectedOrder)} />
                       ) : (
                         <OrderTracker status={selectedOrder.orderStatus} paymentMethod={selectedOrder.paymentMethod} paymentStatus={selectedOrder.paymentStatus} statusHistory={selectedOrder.statusHistory} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs}
                           cancelledBy={selectedOrder.cancelledBy} cancelledReason={selectedOrder.cancelledReason} refundOwed={selectedOrder.refundOwed} refunds={selectedOrder.refunds} />
@@ -1595,6 +1601,7 @@ export default function OrdersHistoryPage() {
                           const waitingOnDesign = st !== '' && st !== 'approved';
                           const owes = remainingDue(selectedOrder) > 0 && goodsPaid(selectedOrder) <= 0;
                           if (!waitingOnDesign && !owes) return null;
+                          if (holdEnded(selectedOrder)) return null;   // the hold notice says what happened
                           if (['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)) return null;
                           const bits = [];
                           if (waitingOnDesign) {
@@ -2383,7 +2390,18 @@ export default function OrdersHistoryPage() {
                         still owed; without this it could never be settled, so it stuck before
                         delivery. Hidden only once fully paid or the order is finished. Suppressed
                         while a request-design order still owes its design fee. */}
+                    {/* Past the hold on an approved proof: the order and its materials are let go
+                        (the 3 AM job cancels it), so it cannot be paid - said here instead of a
+                        Pay button that the server would refuse. */}
+                    {holdEnded(selectedOrder) && (
+                      <div style={{ margin: '0 18px 18px', padding: '10px 12px', borderRadius: '8px', background: 'var(--dark)', border: '1px solid var(--border)', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+                        <strong style={{ color: 'var(--white)' }}>The hold on this order has ended.</strong>{' '}
+                        We held it until {new Date(selectedOrder.paymentDueAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })} and it was not paid in time, so it can no longer be paid.
+                        If you still want it, message us in the order chat and we will set it up again.
+                      </div>
+                    )}
                     {!owesDesignFee(selectedOrder)
+                      && !holdEnded(selectedOrder)
                       && selectedOrder.paymentStatus !== 'paid'
                       && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)
                       && (selectedOrder.orderStatus === 'awaiting_payment'

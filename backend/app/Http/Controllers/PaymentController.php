@@ -3282,6 +3282,13 @@ class PaymentController extends Controller
                 return $this->errorResponse('This order has already been fully paid.', 422);
             }
 
+            // The approved proof was held until paymentDueAt. Once that has passed the order is
+            // released (the 3 AM job cancels it); paying after it would buy materials the shop has
+            // already let go. Refused from the deadline itself, not from whenever the job runs.
+            if (!$payCourierFee && \App\Support\PaymentHold::lapsed($order)) {
+                return $this->errorResponse(\App\Support\PaymentHold::message($order), 422);
+            }
+
             $totalPaid = collect($order->paymentHistory ?? [])->sum('amount');
             $amountDue = round(max(0, (float) ($order->totalAmount ?? 0) - $totalPaid), 2);
 

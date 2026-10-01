@@ -1,5 +1,6 @@
 'use client';
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
+import { shrinkImageUnder } from '@/lib/shrinkImage';
 
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -1621,14 +1622,16 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     // an ordinary request. 30s was cutting off uploads that were still in flight, which left the file
     // sitting staged with no explanation. Two minutes, and the server gives up first (100s) so the
     // failure arrives as a real message rather than a silent client timeout.
-    const oversize = files.find(f => f.size > 50 * 1024 * 1024);
+    const oversize = files.find(f => !f.type?.startsWith('image/') && f.size > 50 * 1024 * 1024);
     if (oversize) {
-      setDesignErr(`"${oversize.name}" is over the 50 MB limit. Compress it or send a shorter clip.`);
+      setDesignErr(`"${oversize.name}" is ${(oversize.size / 1048576).toFixed(1)} MB - videos can be up to 50 MB. Trim it or send a shorter clip.`);
       return;
     }
 
     setUploading(true); setDesignErr('');
     try {
+      // An image over the 10 MB image limit is made smaller first; one under it goes as it is.
+      files = await Promise.all(files.map(f => shrinkImageUnder(f).catch(() => f)));
       const form = new FormData();
       files.forEach(f => form.append('design[]', f));
       form.append('itemIndex', String(activeItemIdx));
