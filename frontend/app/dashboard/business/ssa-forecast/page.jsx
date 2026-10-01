@@ -990,29 +990,56 @@ const pageStyles = `
   .ssa-units-summary .v.gold { color: var(--gold); }
 `;
 
-function getISOWeek(date) {
+/**
+ * ISO-8601 week number AND the ISO year it belongs to.
+ *
+ * Both halves used to be wrong in their own way.
+ *
+ * It read date.getFullYear()/getMonth()/getDate() - the VIEWER's reading of a
+ * Date built from a "YYYY-MM-DD" backend label, which parses at UTC midnight.
+ * West of UTC that local reading is the day before, so four labels in five came
+ * out a week early: "2026-09-28" rendered as W39 instead of W40. It reads UTC
+ * components now, matching how every caller builds the date and how
+ * formatDateLabel reads the year beside it.
+ *
+ * And the week number was paired with the CALENDAR year, which is a different
+ * calendar. The week holding 2024-12-30 is ISO week 1 of 2025, but it rendered
+ * as "W1 2024" - the same label as 2024-01-01, 52 weeks earlier. Two distinct
+ * periods with one name, in a chart axis and in the forecast date picker's
+ * options. The ISO year is the year of the Thursday this already computes, so
+ * it is returned rather than inferred.
+ */
+function getISOWeekParts(date) {
   const d = new Date(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
   );
   const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum); // the Thursday that fixes the ISO year
+  const isoYear = d.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  return {
+    week: Math.ceil(((d - yearStart) / 86400000 + 1) / 7),
+    isoYear,
+  };
 }
 
 // Future period-start dates from the current period forward (W-MON / month-start
 // / year-start), matching the backend's date conventions. Used by the inventory
 // fallback projection when there isn't enough history to run SSA.
 function genFuturePeriods(count, periodType) {
-  const now = new Date();
-  let cur = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  // Anchored to the shop's calendar day, then stepped as a date string - the same
+  // discipline as the other period walkers here. Reading now.getUTCDate() instead
+  // put the first period a day early, and so a whole week or month early, for the
+  // eight hours a day the UTC date lags Manila's.
+  const today = businessToday();
+  let cur = new Date(today + "T00:00:00Z");
   if (periodType === "weekly") {
     const day = cur.getUTCDay();
     cur.setUTCDate(cur.getUTCDate() + (day === 0 ? -6 : 1 - day)); // Monday of this week
   } else if (periodType === "monthly") {
-    cur = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    cur = new Date(`${today.slice(0, 7)}-01T00:00:00Z`);
   } else {
-    cur = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    cur = new Date(`${today.slice(0, 4)}-01-01T00:00:00Z`);
   }
   const out = [];
   for (let i = 0; i < count; i++) {
@@ -2250,7 +2277,12 @@ export default function SSAForecastPage() {
     const pt =
       periodType || submittedConfig?.period?.type || forecastPeriod.type;
     if (forceDaily) return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${year}`;
-    if (pt === "weekly") return `W${getISOWeek(d)} ${year}`;
+    // The ISO year, not `year` - a week-of-year number only means something
+    // against the ISO year, and the two differ in the first and last week.
+    if (pt === "weekly") {
+      const { week, isoYear } = getISOWeekParts(d);
+      return `W${week} ${isoYear}`;
+    }
     if (pt === "monthly") return `${months[d.getUTCMonth()]} ${year}`;
     if (pt === "annually") return `${year}`;
     return dateString;

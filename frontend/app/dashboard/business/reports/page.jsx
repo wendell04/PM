@@ -22,6 +22,7 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { businessToday } from '@/lib/businessDate';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { S, TabBar } from '@/app/dashboard/business/inventory-v2/shared';
 import { useIsPhone, KpiStrip, BottomSheet, pesoShort } from '@/components/dashboard/phone';
@@ -82,7 +83,22 @@ function exportCSV(headers, rows, filename) {
 
 // ── Date range ────────────────────────────────────────────────────────────────
 // Presets as rows, custom behind them - nobody fights a calendar grid for "last 30 days".
-const manila = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+// A Date whose LOCAL components are the shop's calendar date, so the month
+// arithmetic below - new Date(y, m - 1, 1) for a month's start, day 0 for its
+// end - reads naturally and iso() below agrees with it.
+//
+// This was `new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }))`:
+// format the instant into a localised string, then hope Date can parse it back.
+// It does give the right day in V8, but it leaned on a format no spec pins down
+// - Safari has historically refused some localised date strings, and this is a
+// customer-facing shop - and it was a third implementation of the shop clock
+// alongside lib/businessDate.js and lib/localDate.js. businessToday() uses
+// Intl.DateTimeFormat, which is the part of the platform that actually promises
+// this, and is the same function the forecast and home pages bucket sales with.
+const manila = () => {
+  const [y, m, d] = businessToday().split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const PRESETS = [
   { id: 'this-month',  label: 'This month',   range: () => { const n = manila(); return [iso(new Date(n.getFullYear(), n.getMonth(), 1)), iso(n)]; } },
