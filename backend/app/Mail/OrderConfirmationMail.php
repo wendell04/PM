@@ -16,6 +16,21 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
 
     public string $firstName;
     public string $orderId;
+
+    /** Built once per send and shared by the body and the attachment, so the email never says
+     *  "attached" about a PDF that failed to build - which is how a broken template went unseen. */
+    private ?string $pdf = null;
+    private bool $pdfTried = false;
+    public bool $hasReceipt = false;
+
+    private function receiptPdf(): ?string
+    {
+        if (!$this->pdfTried) {
+            $this->pdfTried = true;
+            $this->pdf = $this->orderId !== '' ? \App\Support\ReceiptPdf::forOrder($this->orderId) : null;
+        }
+        return $this->pdf;
+    }
     public array  $items;
     public float  $totalAmount;
     public string $status;
@@ -81,6 +96,7 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
 
     public function content(): Content
     {
+        $this->hasReceipt = $this->receiptPdf() !== null;
         return new Content(
             view: 'emails.order-confirmation',
         );
@@ -97,15 +113,9 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
      */
     public function attachments(): array
     {
-        $pdf = \App\Support\ReceiptPdf::forOrder($this->orderId);
-
-        if (!$pdf) {
-            return [];
-        }
-
-        return [
-            Attachment::fromData(fn () => $pdf, \App\Support\ReceiptPdf::filename($this->orderId))
-                ->withMime('application/pdf'),
-        ];
+        $pdf = $this->receiptPdf();
+        return $pdf ? [
+            Attachment::fromData(fn () => $pdf, \App\Support\ReceiptPdf::filename($this->orderId))->withMime('application/pdf'),
+        ] : [];
     }
 }

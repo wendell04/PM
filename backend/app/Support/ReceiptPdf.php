@@ -94,6 +94,20 @@ class ReceiptPdf
             ];
         }
 
+        // The delivery fee is paid to the shop separately from the order total (often with the same
+        // checkout). It was missing from the receipt even when the email said it was settled. Listed
+        // here, but kept out of $paid so "Still due" stays the goods balance.
+        $feePaid = (float) ($order->courierFeePaidAmount ?? 0);
+        if (($order->courierFeePaid ?? false) && $feePaid > 0.009) {
+            $via = (string) ($order->courierFeePaidMethod ?? '');
+            $payments[] = [
+                'label'  => 'Delivery fee (outside the total)',
+                'when'   => $order->courierFeePaidAt ? date('M j, Y', strtotime((string) $order->courierFeePaidAt)) : '',
+                'method' => $via === 'manual' ? 'RECEIVED BY THE SHOP' : strtoupper($via),
+                'amount' => $feePaid,
+            ];
+        }
+
         $total   = (float) ($order->totalAmount ?? $order->finalPrice ?? 0);
         $settled = ($order->paymentStatus ?? '') === 'paid';
 
@@ -171,8 +185,10 @@ class ReceiptPdf
             return 'Unpaid';
         }
 
-        $designFeeRows = array_filter($payments, fn ($p) => $p['label'] === 'Design fee');
+        // The delivery fee row is outside the goods, so it does not make a design-fee-only order "partial".
+        $goods         = array_filter($payments, fn ($p) => !str_starts_with($p['label'], 'Delivery fee'));
+        $designFeeRows = array_filter($goods, fn ($p) => $p['label'] === 'Design fee');
 
-        return count($designFeeRows) === count($payments) ? 'Design Fee Paid - Balance Due' : 'Partially Paid';
+        return count($designFeeRows) === count($goods) ? 'Design Fee Paid - Balance Due' : 'Partially Paid';
     }
 }

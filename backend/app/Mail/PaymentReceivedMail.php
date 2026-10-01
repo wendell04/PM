@@ -34,6 +34,22 @@ class PaymentReceivedMail extends Mailable implements ShouldQueue
     public string $orderId;
     /** Part of this charge that was the courier's delivery fee, not the order. */
     public float  $deliveryIncluded;
+    public string $payUrl = '';
+
+    /** Built once per send and shared by the body and the attachment, so the email never says
+     *  "attached" about a PDF that failed to build - which is how a broken template went unseen. */
+    private ?string $pdf = null;
+    private bool $pdfTried = false;
+    public bool $hasReceipt = false;
+
+    private function receiptPdf(): ?string
+    {
+        if (!$this->pdfTried) {
+            $this->pdfTried = true;
+            $this->pdf = $this->orderId !== '' ? \App\Support\ReceiptPdf::forOrder($this->orderId) : null;
+        }
+        return $this->pdf;
+    }
 
     public function __construct(
         string $firstName,
@@ -63,17 +79,10 @@ class PaymentReceivedMail extends Mailable implements ShouldQueue
      */
     public function attachments(): array
     {
-        if ($this->orderId === '') {
-            return [];
-        }
-        $pdf = \App\Support\ReceiptPdf::forOrder($this->orderId);
-        if (!$pdf) {
-            return [];
-        }
-        return [
-            Attachment::fromData(fn () => $pdf, \App\Support\ReceiptPdf::filename($this->orderId))
-                ->withMime('application/pdf'),
-        ];
+        $pdf = $this->receiptPdf();
+        return $pdf ? [
+            Attachment::fromData(fn () => $pdf, \App\Support\ReceiptPdf::filename($this->orderId))->withMime('application/pdf'),
+        ] : [];
     }
 
     public function envelope(): Envelope
@@ -84,6 +93,14 @@ class PaymentReceivedMail extends Mailable implements ShouldQueue
 
     public function content(): Content
     {
+        $this->hasReceipt = $this->receiptPdf() !== null;
+        // Something still owed: the same no-sign-in pay link as the reminder, not "go to My Orders".
+        if ($this->balance > 0.009 && $this->orderId !== '' && $this->payUrl === '') {
+            $order = \App\Models\Order::find($this->orderId);
+            if ($order && !\App\Support\PaymentMethod::isCod($order->paymentMethod) && \App\Support\PaymentMethod::enabledOnline()) {
+                $this->payUrl = \App\Support\PayLink::url($order);
+            }
+        }
         return new Content(view: 'emails.payment-received');
     }
 }

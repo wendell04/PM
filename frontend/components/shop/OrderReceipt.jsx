@@ -113,6 +113,13 @@ export default function OrderReceipt({ order }) {
               </div>
             );
           })}
+          {/* Paid separately from the total, so listed but not counted in what is still due. Same as the PDF. */}
+          {order.courierFeePaid && Number(order.courierFeePaidAmount) > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#333', marginBottom: 3 }}>
+              <span>Delivery fee (outside the total){order.courierFeePaidAt ? ` - ${new Date(order.courierFeePaidAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}{order.courierFeePaidMethod ? ` - ${order.courierFeePaidMethod === 'manual' ? 'RECEIVED BY THE SHOP' : String(order.courierFeePaidMethod).toUpperCase()}` : ''}</span>
+              <span style={{ fontWeight: 700 }}>{peso(order.courierFeePaidAmount)}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginTop: 6, fontWeight: 800, color: settled ? '#166534' : '#b45309' }}>
             <span>{settled ? 'Fully Paid' : 'Still Due'}</span>
             <span>{settled ? peso(order.totalAmount ?? order.finalPrice) : peso(receiptOwed)}</span>

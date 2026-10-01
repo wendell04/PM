@@ -88,13 +88,13 @@
     </tr>
     @if($firstOrder > 0)
     <tr>
-      <td align="right" style="padding:2px 12px;font-weight:bold;color:#333333;">First order@if($firstOrderPercent > 0) ({{ $firstOrderPercent }}%)@endif:</td>
+      <td align="right" style="padding:2px 12px;font-weight:bold;color:#333333;">First order{{ $firstOrderPercent > 0 ? ' (' . $firstOrderPercent . '%)' : '' }}:</td>
       <td align="right" style="padding:2px 0;color:#333333;">-{{ $peso($firstOrder) }}</td>
     </tr>
     @endif
     @if($discount > 0)
     <tr>
-      <td align="right" style="padding:2px 12px;font-weight:bold;color:#333333;">Voucher@if($voucher !== '') ({{ $voucher }})@endif:</td>
+      <td align="right" style="padding:2px 12px;font-weight:bold;color:#333333;">Voucher{{ $voucher !== '' ? ' (' . $voucher . ')' : '' }}:</td>
       <td align="right" style="padding:2px 0;color:#333333;">-{{ $peso($discount) }}</td>
     </tr>
     @endif
