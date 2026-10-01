@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
     <meta name="color-scheme" content="light">
     <meta name="supported-color-schemes" content="light">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=560">
   <title>Balance due</title>
   <style>
     :root { color-scheme: light only; supported-color-schemes: light only; }
@@ -15,7 +15,7 @@
     <tr>
       <td align="center" style="padding:40px 16px;">
         <table role="presentation" width="520" cellpadding="0" cellspacing="0"
-          style="max-width:520px;background-color: #ffffff;border-radius:12px;
+          style="width:520px;min-width:520px;max-width:520px;background-color: #ffffff;border-radius:12px;
                  border:1px solid rgba(0,0,0,0.07);overflow:hidden;">
 
           {{-- Header --}}

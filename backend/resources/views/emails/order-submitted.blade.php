@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
     <meta name="color-scheme" content="light">
     <meta name="supported-color-schemes" content="light">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=560">
   <title>Order Request Received</title>
   <style>
     /* One look everywhere. Clients that honour this stop recoloring the email in dark mode. */
@@ -15,8 +15,8 @@
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff;">
     <tr>
       <td align="center" style="padding:40px 16px;">
-        <table role="presentation" width="580" cellpadding="0" cellspacing="0"
-          style="max-width:580px;background-color: #ffffff;border-radius:12px;
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0"
+          style="width:520px;min-width:520px;max-width:520px;background-color: #ffffff;border-radius:12px;
                  border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
 
           {{-- Header --}}
