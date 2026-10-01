@@ -56,6 +56,7 @@ class ActivityLog extends Model
         'sale.recorded'         => ['Recorded a sale by hand', 'money'],
         // A customer email that did not leave (the proof email, for now).
         'mail.failed'           => ['An email to a customer failed', 'other'],
+        'settings.mail_routing' => ['Changed which email provider goes first', 'other'],
         'sale.updated'          => ['Changed a recorded sale', 'money'],
         'sale.deleted'          => ['Removed a recorded sale', 'money'],
         'sale.imported'         => ['Imported sales',          'money'],

@@ -260,13 +260,34 @@ class SettingsController extends Controller
      * watch a provider's quota drop - which is how a lane spent a week on the wrong provider
      * without anyone being able to say so.
      */
+    /**
+     * PUT /admin/settings/mail-routing - which provider order emails try first (system admin).
+     * The other provider stays behind it, and the switch takes effect on the next email.
+     */
+    public function mailRouting(Request $request)
+    {
+        if (!$this->isSystemAdmin($request)) return $this->unauthorizedResponse();
+        $validated = $request->validate(['first' => 'required|in:brevo,resend']);
+        \App\Support\MailRoute::set($validated['first']);
+        try {
+            \App\Models\ActivityLog::create([
+                'action' => 'settings.mail_routing', 'entityType' => 'settings', 'entityId' => 'mail_routing',
+                'description' => 'Order emails now go out through ' . ($validated['first'] === 'brevo' ? 'Brevo' : 'Resend') . ' first',
+                'performedBy' => trim(($request->user()->firstName ?? '') . ' ' . ($request->user()->lastName ?? '')),
+                'performedByEmail' => $request->user()->email ?? null, 'createdAt' => now(),
+            ]);
+        } catch (\Throwable $e) { /* the switch still applies */ }
+        return $this->successResponse('Saved.', ['mailLanes' => $this->mailLanes()]);
+    }
+
     private function mailLanes(): array
     {
         $chain = function (?string $name): array {
             $name = (string) $name;
             $cfg  = config("mail.mailers.{$name}");
             if (($cfg['transport'] ?? null) === 'failover') {
-                return array_values(array_filter((array) ($cfg['mailers'] ?? [])));
+                // In the order it is really tried - the Integrations switch can put Resend first.
+                return \App\Support\MailRoute::ordered(array_values(array_filter((array) ($cfg['mailers'] ?? []))));
             }
             return $name !== '' ? [$name] : [];
         };

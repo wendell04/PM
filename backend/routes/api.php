@@ -209,6 +209,7 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::put('/admin/settings',                   [SettingsController::class, 'update']);
     // Integrations - the controller lets only the system admin through.
     Route::post('/admin/settings/mail-test',        [SettingsController::class, 'mailTest'])->middleware('throttle:6,1');
+    Route::put('/admin/settings/mail-routing',      [SettingsController::class, 'mailRouting'])->middleware('throttle:10,1');
     // Terms & Policies - the owner's alone; never grantable.
     Route::put('/admin/settings/terms',             [SettingsController::class, 'termsUpdate']);
 

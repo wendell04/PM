@@ -967,6 +967,25 @@ export default function SettingsPage() {
   // Email delivery: which lane each kind of mail leaves by, plus a test through one named provider.
   const [mailLanes, setMailLanes] = useState(null);
   const [mailTest, setMailTest] = useState({ busy: '', result: null });
+  const [mailRouteBusy, setMailRouteBusy] = useState(false);
+  const [mailRouteNote, setMailRouteNote] = useState(null);
+  const setMailFirst = async (first) => {
+    setMailRouteBusy(true); setMailRouteNote(null);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/mail-routing`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ first }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || 'Could not save. Try again.');
+      if (d?.data?.mailLanes) setMailLanes(d.data.mailLanes);
+      setMailRouteNote({ text: `Order emails now go out through ${first === 'brevo' ? 'Brevo' : 'Resend'} first. The next email uses it.` });
+    } catch (e) {
+      setMailRouteNote({ error: true, text: e.message || 'Could not save. Try again.' });
+    } finally {
+      setMailRouteBusy(false);
+    }
+  };
   const runMailTest = async (provider) => {
     setMailTest({ busy: provider, result: null });
     try {
@@ -1891,6 +1910,31 @@ export default function SettingsPage() {
               </span>
             </div>
           ))}
+          {/* Which provider order emails try first. A failover only moves on when a provider refuses;
+              one that accepts and holds (Brevo, Oct 1) stops everything behind it, so this is the way out. */}
+          {(mailLanes.notifications || []).length > 1 && (
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.35rem' }}>
+              <span style={{ color: 'var(--gray)', fontSize: '0.8rem', minWidth: '11.5rem' }}>Order emails go out first through</span>
+              <div role="radiogroup" aria-label="Order emails go out first through" style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                {['brevo', 'resend'].map(p => {
+                  const on = mailLanes.notifications[0] === p;
+                  return (
+                    <button key={p} type="button" role="radio" aria-checked={on} disabled={on || mailRouteBusy}
+                      onClick={() => setMailFirst(p)}
+                      style={{ padding: '7px 16px', border: 'none', fontSize: '0.8rem', fontWeight: 700, cursor: on || mailRouteBusy ? 'default' : 'pointer',
+                        background: on ? 'linear-gradient(135deg,var(--gold-light),var(--gold-dark))' : 'transparent', color: on ? '#1a1a1a' : 'var(--white)' }}>
+                      {p === 'brevo' ? 'Brevo' : 'Resend'}
+                    </button>
+                  );
+                })}
+              </div>
+              <span style={{ fontSize: '0.74rem', color: 'var(--gray)', lineHeight: 1.5, flex: '1 1 260px' }}>
+                The other one stays as the fallback. Switch to Resend when Brevo shows emails as Sent but not Delivered;
+                Resend allows 100 a day, shared with the sign-in codes.
+              </span>
+            </div>
+          )}
+          {mailRouteNote && <div style={{ fontSize: '0.76rem', color: mailRouteNote.error ? 'var(--red)' : 'var(--green)' }}>{mailRouteNote.text}</div>}
           {/* Both lanes starting on the same provider is the state that looks fine and is not: one
               allowance carries everything, and the other provider's sits unused until it is gone. */}
           {mailLanes.security?.[0] && mailLanes.security[0] === mailLanes.notifications?.[0] && (

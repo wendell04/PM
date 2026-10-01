@@ -25,6 +25,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // The order-email chain is built when the first email is about to leave, and that is when
+        // the Integrations switch is read (App\Support\MailRoute): the chosen provider goes first,
+        // the other stays behind it. The security lane (codes, resets) keeps its configured order.
+        Mail::extend('failover', function (array $config) {
+            $manager = app('mail.manager');
+            $names   = \App\Support\MailRoute::ordered((array) ($config['mailers'] ?? []));
+            $transports = array_map(function ($name) use ($manager) {
+                $c = config("mail.mailers.{$name}");
+                if (!is_array($c)) throw new \InvalidArgumentException("Mailer [{$name}] is not defined.");
+                return $manager->createSymfonyTransport($c);
+            }, $names);
+            return new \Symfony\Component\Mailer\Transport\FailoverTransport($transports, $config['retry_after'] ?? 60);
+        });
+
         // Laravel has no Brevo driver, so the Symfony bridge is wired in by hand. The API
         // transport is the only usable one here - BrevoSmtpTransport would go out over 587, which
         // Railway blocks on this plan.
