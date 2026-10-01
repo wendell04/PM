@@ -48,8 +48,9 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('all'); // all | locked | unlock_requested
+  const [filter, setFilter] = useState('all'); // all | locked | unverified | no_terms | dormant
   const [unlockActing, setUnlockActing] = useState({});
+  const [unlockError, setUnlockError] = useState('');
   const [page, setPage] = useState(1);
   // Which customer's consent record is open. Read-only - evidence is not something to edit.
   const [termsProof, setTermsProof] = useState(null);
@@ -86,24 +87,30 @@ export default function CustomersPage() {
     if (isPrivileged) fetchCustomers();
   }, [isPrivileged, fetchCustomers]);
 
+  // For a customer who asked the shop directly (phone, Facebook) and cannot reach their email to
+  // reset. Everyone else unlocks themselves with Reset password on the sign-in form.
   const handleUnlock = async (id) => {
     setUnlockActing(prev => ({ ...prev, [id]: true }));
+    setUnlockError('');
     try {
-      await fetchWithTimeout(`${API_URL}/api/admin/customers/${id}/unlock`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/customers/${id}/unlock`, {
         method: 'POST', headers: HEADERS(token),
       }, 10000);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Could not unlock this account.');
       setCustomers(prev => prev.map(c =>
-        c.id === id ? { ...c, is_locked: false, failed_login_attempts: 0, unlock_requested_at: null } : c
+        c.id === id ? { ...c, is_locked: false, locked_until: null, failed_login_attempts: 0, lockout_level: 0 } : c
       ));
-    } catch { /* silent */ }
-    finally { setUnlockActing(prev => { const n = { ...prev }; delete n[id]; return n; }); }
+    } catch (err) {
+      setUnlockError(err.message || 'Could not unlock this account.');
+    } finally { setUnlockActing(prev => { const n = { ...prev }; delete n[id]; return n; }); }
   };
 
   const handleChat = (customer) => {
     router.push('/dashboard/business/chat');
   };
 
-  const unlockRequests = customers.filter(c => c.unlock_requested_at);
+  const lockedNow = customers.filter(c => c.is_locked);
 
   const filtered = customers.filter(c => {
     const q = search.toLowerCase();
@@ -117,7 +124,6 @@ export default function CustomersPage() {
     const matchFilter =
       filter === 'all' ||
       (filter === 'locked' && c.is_locked) ||
-      (filter === 'unlock_requested' && c.unlock_requested_at) ||
       (filter === 'unverified' && !c.is_verified) ||
       (filter === 'no_terms' && !c.acceptedTermsAt) ||
       // A year is the point where a customer has plainly stopped coming back. Two years is the
@@ -143,48 +149,39 @@ export default function CustomersPage() {
             <SummaryCard label="Total Customers" value={customers.length} accent />
             <SummaryCard label="Locked" value={customers.filter(c => c.is_locked).length}
               color={customers.some(c => c.is_locked) ? 'var(--st-red-fg)' : undefined} />
-            <SummaryCard label="Unlock Requests" value={unlockRequests.length}
-              color={unlockRequests.length > 0 ? 'var(--gold)' : undefined} />
             <SummaryCard label="Unverified" value={customers.filter(c => !c.is_verified).length} />
           </div>
         )}
 
-        {/* Unlock Requests - always visible section */}
+        {/* Locked out right now. A lock ends by itself (15 min, longer if it keeps happening) or the
+            moment the customer resets their password, so this is only for someone who asks the shop. */}
         {!loading && (
           <div style={{
             marginBottom: '24px',
-            border: unlockRequests.length > 0
-              ? '1px solid rgba(251,191,36,0.4)'
-              : '1px solid var(--border)',
+            border: lockedNow.length > 0 ? '1px solid rgba(239,68,68,0.35)' : '1px solid var(--border)',
             borderRadius: '12px',
             overflow: 'hidden',
-            background: unlockRequests.length > 0
-              ? 'rgba(251,191,36,0.05)'
-              : 'rgba(255,255,255,0.02)',
+            background: lockedNow.length > 0 ? 'rgba(239,68,68,0.04)' : 'rgba(255,255,255,0.02)',
           }}>
-            {/* Header */}
             <div style={{
               padding: '12px 20px',
-              borderBottom: unlockRequests.length > 0 ? '1px solid rgba(251,191,36,0.15)' : 'none',
+              borderBottom: lockedNow.length > 0 ? '1px solid rgba(239,68,68,0.15)' : 'none',
               display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
             }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                stroke={unlockRequests.length > 0 ? '#D4A843' : 'var(--gray)'} strokeWidth="2">
+                stroke={lockedNow.length > 0 ? 'var(--red)' : 'var(--gray)'} strokeWidth="2">
                 <rect x="5" y="11" width="14" height="10" rx="2"/>
                 <path d="M7 11V7a5 5 0 0110 0v4"/>
               </svg>
-              <span style={{
-                fontWeight: 700, fontSize: '0.88rem',
-                color: unlockRequests.length > 0 ? 'var(--gold)' : 'var(--gray)',
-              }}>
-                Account Unlock Requests
+              <span style={{ fontWeight: 700, fontSize: '0.88rem', color: lockedNow.length > 0 ? 'var(--white)' : 'var(--gray)' }}>
+                Locked out right now
               </span>
-              {unlockRequests.length > 0 ? (
+              {lockedNow.length > 0 ? (
                 <span style={{
-                  fontSize: '0.7rem', background: '#D4A843', color: '#000',
+                  fontSize: '0.7rem', background: 'rgba(239,68,68,0.18)', color: 'var(--red)',
                   borderRadius: '999px', padding: '1px 8px', fontWeight: 700,
                 }}>
-                  {unlockRequests.length}
+                  {lockedNow.length}
                 </span>
               ) : (
                 <span style={{
@@ -192,87 +189,58 @@ export default function CustomersPage() {
                   background: 'rgba(34,197,94,0.1)', borderRadius: '999px',
                   padding: '1px 10px',
                 }}>
-                  All clear
+                  None
                 </span>
               )}
-              {unlockRequests.length === 0 && (
-                <span style={{ fontSize: '0.78rem', color: 'var(--gray)', flex: '1 1 260px', minWidth: 0 }}>
-                  Nobody is locked out. A customer locked out after 5 wrong passwords can ask to be let back in, and it shows here.
-                </span>
-              )}
+              <span style={{ fontSize: '0.78rem', color: 'var(--gray)', flex: '1 1 260px', minWidth: 0 }}>
+                {lockedNow.length === 0
+                  ? '5 wrong passwords lock an account for 15 minutes, longer if it keeps happening. The customer can end it any time by resetting their password.'
+                  : 'These end by themselves, or when the customer resets their password. Unlock only for someone who asked you and cannot reach their email.'}
+              </span>
             </div>
 
-            {/* Request rows */}
-            {unlockRequests.map((c, idx) => (
+            {unlockError && (
+              <div style={{ padding: '10px 20px', fontSize: '0.8rem', color: 'var(--red)', borderBottom: '1px solid rgba(239,68,68,0.15)' }}>
+                {unlockError}
+              </div>
+            )}
+
+            {lockedNow.map((c, idx) => (
               <div key={c.id} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '14px 20px', gap: '12px', flexWrap: 'wrap',
                 borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.05)',
-                background: 'rgba(251,191,36,0.03)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                   <Avatar customer={c} size={38} />
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.88rem' }}>
-                        {`${c.firstName} ${c.lastName}`.trim() || '-'}
-                      </span>
-                      <span style={{
-                        fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px',
-                        borderRadius: '999px', background: 'rgba(251,191,36,0.15)',
-                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.05em',
-                      }}>Unlock Requested</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.88rem' }}>
+                      {`${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || '-'}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '2px' }}>{c.email}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '2px', opacity: 0.8 }}>
-                      Requested: {c.unlock_requested_at ? new Date(c.unlock_requested_at).toLocaleString() : '-'}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '2px', overflowWrap: 'anywhere' }}>{c.email}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '2px' }}>
+                      {c.locked_until ? `Until ${new Date(c.locked_until).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Locked'}
+                      {c.lockout_level > 1 ? ` · lock ${c.lockout_level} in a row` : ''}
                     </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                  <button
-                    type="button"
-                    disabled={!!unlockActing[c.id]}
-                    onClick={() => handleUnlock(c.id)}
-                    style={{
-                      padding: '7px 16px', borderRadius: '8px', border: 'none',
-                      background: '#16a34a', color: 'var(--dark)', fontWeight: 600, fontSize: '0.8rem',
-                      cursor: unlockActing[c.id] ? 'not-allowed' : 'pointer',
-                      opacity: unlockActing[c.id] ? 0.6 : 1,
-                      display: 'flex', alignItems: 'center', gap: '5px',
-                    }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/>
-                    </svg>
-                    {unlockActing[c.id] ? 'Unlocking...' : 'Approve & Unlock'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!!unlockActing[c.id]}
-                    onClick={async () => {
-                      setUnlockActing(prev => ({ ...prev, [c.id]: true }));
-                      try {
-                        await fetchWithTimeout(`${API_URL}/api/admin/unlock-requests/${c.id}/deny`, {
-                          method: 'POST', headers: HEADERS(token),
-                        }, 10000);
-                        setCustomers(prev => prev.map(x =>
-                          x.id === c.id ? { ...x, unlock_requested_at: null } : x
-                        ));
-                      } catch { /* silent */ }
-                      finally { setUnlockActing(prev => { const n = { ...prev }; delete n[c.id]; return n; }); }
-                    }}
-                    style={{
-                      padding: '7px 14px', borderRadius: '8px',
-                      border: '1px solid var(--border)', background: 'transparent',
-                      color: 'var(--gray)', fontWeight: 600, fontSize: '0.8rem',
-                      cursor: unlockActing[c.id] ? 'not-allowed' : 'pointer',
-                      opacity: unlockActing[c.id] ? 0.6 : 1,
-                    }}
-                  >
-                    Deny
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  disabled={!!unlockActing[c.id]}
+                  onClick={() => handleUnlock(c.id)}
+                  style={{
+                    padding: '7px 16px', borderRadius: '8px', border: '1px solid var(--border)',
+                    background: 'transparent', color: 'var(--white)', fontWeight: 600, fontSize: '0.8rem',
+                    cursor: unlockActing[c.id] ? 'not-allowed' : 'pointer',
+                    opacity: unlockActing[c.id] ? 0.6 : 1, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/>
+                  </svg>
+                  {unlockActing[c.id] ? 'Unlocking...' : 'Unlock'}
+                </button>
               </div>
             ))}
           </div>
@@ -295,7 +263,6 @@ export default function CustomersPage() {
               options={[
                 { value: 'all',               label: 'All customers' },
                 { value: 'locked',            label: 'Locked accounts' },
-                { value: 'unlock_requested',  label: 'Unlock requested' },
                 { value: 'unverified',        label: 'Unverified' },
                 { value: 'no_terms',          label: 'No terms record' },
                 { value: 'dormant',           label: 'Quiet over a year' },
@@ -382,13 +349,6 @@ export default function CustomersPage() {
                         borderRadius: '999px', background: 'rgba(239,68,68,0.15)',
                         color: 'var(--red)', textTransform: 'uppercase', letterSpacing: '0.05em',
                       }}>Locked</span>
-                    )}
-                    {c.unlock_requested_at && (
-                      <span style={{
-                        fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px',
-                        borderRadius: '999px', background: 'rgba(251,191,36,0.15)',
-                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.05em',
-                      }}>Unlock Requested</span>
                     )}
                     {!c.is_verified && (
                       <span style={{

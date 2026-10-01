@@ -160,3 +160,8 @@
 @media (max-width: 640px) {
   .shop-footer-social-btn { width: 40px; height: 40px; }
 }
+
+/* Edge draws its own "show password" eye inside password fields. Every password field here already
+   has our eye button, so Edge's made two. Hide the browser's; ours works in every browser. */
+input::-ms-reveal,
+input::-ms-clear { display: none; }

@@ -78,7 +78,6 @@ Route::post('/send-reset-code', [AuthController::class, 'sendResetCode'])->middl
 Route::post('/verify-reset-code', [AuthController::class, 'verifyResetCode'])->middleware('throttle:10,1');
 Route::post('/reset-password',  [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
 Route::post('/contact',         [AuthController::class, 'contact'])->middleware(['throttle:5,1', 'throttle:20,60', \App\Http\Middleware\VerifyTurnstile::class]);
-Route::post('/unlock-request',  [AuthController::class, 'unlockRequest'])->middleware('throttle:3,1');
 
 // ─── Auth (Protected - any logged-in user) ───────────────────────────────────
 Route::get('/user', function (Request $request) {
@@ -223,9 +222,6 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::post('/admin/backups/run',                     [\App\Http\Controllers\BackupController::class, 'run'])->middleware('throttle:3,1');
     Route::get('/admin/customers',                        [StaffController::class, 'customers']);
     Route::post('/admin/customers/{id}/unlock',           [StaffController::class, 'unlockCustomer']);
-    Route::get('/admin/unlock-requests',                  [StaffController::class, 'unlockRequests']);
-    Route::post('/admin/unlock-requests/{id}/approve',    [StaffController::class, 'approveUnlock']);
-    Route::post('/admin/unlock-requests/{id}/deny',       [StaffController::class, 'denyUnlock']);
 });
 
 // ─── Staff and access ── owner, super admin, and an Administrator the owner gave it to ──

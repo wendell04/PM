@@ -96,7 +96,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Login flood limiter - scoped per ACCOUNT (email+IP), not per raw IP, so one stuck tab,
         // a 2FA re-submit, or shared network can't lock out a legitimate user. Brute-force is handled
-        // by the account lockout in AuthController (3 wrong passwords -> 15-min lock). A loose per-IP
+        // by the account lockout (App\Support\LoginLockout: 5 wrong passwords -> 15 min, then 30 min, 1 h, 24 h). A loose per-IP
         // ceiling still guards against flooding.
         RateLimiter::for('login', function (Request $request) {
             $email = strtolower(trim((string) $request->input('email')));

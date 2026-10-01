@@ -2869,6 +2869,15 @@ const handleForgotResetPassword = async () => {
                           </button>
                         </div>
                       )}
+                      {/* Locked out: a reset proves they own the email and ends the lock at once,
+                          so it is offered right where the lock message is. */}
+                      {loginErrors.password && loginErrors.password.toLowerCase().includes('reset your password') && (
+                        <button type="button"
+                          onClick={() => { setModal(null); setForgotModal(true); setForgotEmail(loginForm.email.trim()); setForgotError(''); setForgotSent(false); setForgotStep(1); setForgotCode(''); setForgotNewPassword(''); setForgotConfirmPassword(''); }}
+                          style={{ marginTop: '0.6rem', width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.45)', background: 'rgba(212,168,67,0.08)', color: 'var(--gold)', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>
+                          Reset my password
+                        </button>
+                      )}
                     </div>
                     <div className="auth-row">
                       <label className="auth-check" style={{display:'flex', alignItems:'center'}}>

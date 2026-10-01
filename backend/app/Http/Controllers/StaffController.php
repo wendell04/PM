@@ -353,7 +353,7 @@ class StaffController extends Controller
             $customers = User::where('role', 'customer')
                 ->orderBy('created_at', 'desc')
                 ->get(['_id', 'firstName', 'lastName', 'email', 'avatar', 'is_verified',
-                       'login_locked_until', 'failed_login_attempts', 'unlock_requested_at', 'created_at',
+                       'login_locked_until', 'failed_login_attempts', 'lockout_level', 'created_at',
                        // Clickwrap evidence. Recorded at registration and never edited afterwards, so
                        // it is the only thing that can answer "what exactly did they agree to".
                        'acceptedTermsVersion', 'acceptedTermsAt', 'acceptedTermsSnapshot', 'acceptedTermsIp',
@@ -371,7 +371,9 @@ class StaffController extends Controller
                 'is_verified'           => (bool) ($u->is_verified ?? false),
                 'is_locked'             => $u->login_locked_until && $u->login_locked_until > $now,
                 'failed_login_attempts' => (int) ($u->failed_login_attempts ?? 0),
-                'unlock_requested_at'   => $u->unlock_requested_at?->toIso8601String(),
+                // Customers > Locked out right now: until when, and which lock on the ladder it is.
+                'locked_until'          => $u->login_locked_until && $u->login_locked_until > $now ? $u->login_locked_until->toIso8601String() : null,
+                'lockout_level'         => (int) ($u->lockout_level ?? 0),
                 'created_at'            => $u->created_at?->toIso8601String(),
                 'acceptedTermsVersion'  => $u->acceptedTermsVersion !== null ? (int) $u->acceptedTermsVersion : null,
                 'acceptedTermsAt'       => $u->acceptedTermsAt ?? null,
@@ -389,7 +391,8 @@ class StaffController extends Controller
 
     /**
      * POST /api/admin/customers/{id}/unlock
-     * Directly unlock a customer account (admin action without request flow).
+     * Unlock a customer before the lock runs out - they asked the shop by phone or Facebook and
+     * cannot reach their email to reset. Starts the lockout ladder over; audit-logged.
      */
     public function unlockCustomer(Request $request, string $id)
     {
@@ -403,97 +406,13 @@ class StaffController extends Controller
                 return $this->notFoundResponse('User');
             }
 
-            $user->login_locked_until    = null;
-            $user->failed_login_attempts = 0;
-            $user->unlock_requested_at   = null;
+            \App\Support\LoginLockout::clear($user);
             $user->save();
 
             $this->logActivity($request, 'user.unlocked', 'user', (string) $id, 'Unlocked a locked-out account');
             return $this->successResponse('Account unlocked successfully.');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to unlock account.');
-        }
-    }
-
-    /**
-     * GET /api/admin/unlock-requests
-     * List customers who have requested account unlock.
-     */
-    public function unlockRequests(Request $request)
-    {
-        try {
-            if (!$this->hasPermission($request, 'userManagement')) {
-                return $this->unauthorizedResponse();
-            }
-
-            $users = User::where('role', 'customer')
-                ->whereNotNull('unlock_requested_at')
-                ->get(['_id', 'firstName', 'lastName', 'email', 'login_locked_until', 'unlock_requested_at']);
-
-            $result = $users->map(fn($u) => [
-                'id'                  => (string) $u->_id,
-                'name'                => trim(($u->firstName ?? '') . ' ' . ($u->lastName ?? '')),
-                'email'               => $u->email,
-                'login_locked_until'  => $u->login_locked_until?->toIso8601String(),
-                'unlock_requested_at' => $u->unlock_requested_at?->toIso8601String(),
-            ]);
-
-            return $this->successResponse('Unlock requests fetched.', $result);
-        } catch (\Exception $e) {
-            return $this->serverErrorResponse($e, 'Failed to fetch unlock requests.');
-        }
-    }
-
-    /**
-     * POST /api/admin/unlock-requests/{id}/approve
-     * Approve a customer unlock request.
-     */
-    public function approveUnlock(Request $request, string $id)
-    {
-        try {
-            if (!$this->hasPermission($request, 'userManagement')) {
-                return $this->unauthorizedResponse();
-            }
-
-            $user = User::find($id);
-            if (!$user || $user->role !== 'customer') {
-                return $this->notFoundResponse('User');
-            }
-
-            $user->login_locked_until    = null;
-            $user->failed_login_attempts = 0;
-            $user->unlock_requested_at   = null;
-            $user->save();
-
-            $this->logActivity($request, 'user.unlocked', 'user', (string) $id, 'Unlocked a locked-out account');
-            return $this->successResponse('Account unlocked successfully.');
-        } catch (\Exception $e) {
-            return $this->serverErrorResponse($e, 'Failed to unlock account.');
-        }
-    }
-
-    /**
-     * POST /api/admin/unlock-requests/{id}/deny
-     * Deny a customer unlock request (clears the flag without unlocking).
-     */
-    public function denyUnlock(Request $request, string $id)
-    {
-        try {
-            if (!$this->hasPermission($request, 'userManagement')) {
-                return $this->unauthorizedResponse();
-            }
-
-            $user = User::find($id);
-            if (!$user || $user->role !== 'customer') {
-                return $this->notFoundResponse('User');
-            }
-
-            $user->unlock_requested_at = null;
-            $user->save();
-
-            return $this->successResponse('Unlock request denied.');
-        } catch (\Exception $e) {
-            return $this->serverErrorResponse($e, 'Failed to deny unlock request.');
         }
     }
 

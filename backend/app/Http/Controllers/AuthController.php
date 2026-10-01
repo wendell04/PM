@@ -7,6 +7,7 @@ use App\Mail\VerificationCodeMail;
 use App\Mail\WelcomeMail;
 use App\Mail\AccountSecurityAlertMail;
 use App\Models\User;
+use App\Support\LoginLockout;
 use App\Models\Conversation;
 use App\Models\Message;
 use Illuminate\Http\Request;
@@ -152,8 +153,6 @@ class AuthController extends Controller
         }
     }
 
-    private const LOGIN_MAX_ATTEMPTS = 5;
-    private const LOGIN_LOCKOUT_MINUTES = 15;
     private const DEVICE_TOKEN_MAX_AGE_DAYS = 90;
 
     public function login(Request $request)
@@ -169,42 +168,41 @@ class AuthController extends Controller
             $user = User::emailIs($request->email)->first();
 
             if (!$user) {
+                // An address with no account locks exactly like a real one, so "locked" never
+                // confirms that the email is registered.
+                if ($left = LoginLockout::unknownMinutesLeft($request->email)) {
+                    return $this->errorResponse(LoginLockout::message($left), 429);
+                }
                 // Constant-time: run a dummy hash so response timing doesn't reveal whether the email
                 // exists (blocks user enumeration via timing). Message is already generic.
                 Hash::check($request->password, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
+                $lockedFor = LoginLockout::recordUnknownFailure($request->email);
                 Log::warning('Login failed: user not found', ['email' => $request->email, 'ip' => $ip]);
                 // Kept even though no account matched. Somebody working through addresses is the
                 // pattern this log exists to make visible, and it is invisible if only the
                 // successful attempts are written down.
                 self::logAuthEvent($request, 'auth.login_failed', null,
                     'Sign-in refused - no account with that email', ['email' => $request->email]);
+                if ($lockedFor) return $this->errorResponse(LoginLockout::message($lockedFor), 429);
                 return $this->errorResponse('The email or password you entered is incorrect. Please try again.', 401);
             }
 
-            if (
-                $user->login_locked_until &&
-                now()->lt($user->login_locked_until)
-            ) {
-                $minutesLeft = (int) ceil(now()->diffInSeconds($user->login_locked_until) / 60);
+            if ($left = LoginLockout::minutesLeft($user->login_locked_until)) {
                 Log::warning('Login blocked: account locked', ['email' => $user->email, 'ip' => $ip]);
                 self::logAuthEvent($request, 'auth.login_failed', $user,
                     'Sign-in refused - the account is locked', ['reason' => 'locked']);
-                return $this->errorResponse(
-                    "Account temporarily locked. Try again in {$minutesLeft} minute(s).",
-                    429
-                );
+                return $this->errorResponse(LoginLockout::message($left), 429);
             }
 
             if (!Hash::check($request->password, $user->password)) {
-                $attempts = ($user->failed_login_attempts ?? 0) + 1;
-                $user->failed_login_attempts = $attempts;
+                $lockedFor = LoginLockout::recordFailure($user);
+                $user->save();
 
-                if ($attempts >= self::LOGIN_MAX_ATTEMPTS) {
-                    $user->login_locked_until = now()->addMinutes(self::LOGIN_LOCKOUT_MINUTES);
-                    $user->failed_login_attempts = 0;
-                    Log::warning('Login failed: account locked after max attempts', ['email' => $user->email, 'ip' => $ip]);
+                if ($lockedFor) {
+                    Log::warning('Login failed: account locked after max attempts', ['email' => $user->email, 'ip' => $ip, 'minutes' => $lockedFor]);
                     self::logAuthEvent($request, 'auth.login_locked', $user,
-                        'Account locked after too many wrong passwords', ['attempts' => $attempts]);
+                        'Account locked for ' . LoginLockout::duration($lockedFor) . ' after too many wrong passwords',
+                        ['minutes' => $lockedFor, 'lock' => (int) $user->lockout_level]);
 
                     // Alert the owner in case this was someone else attacking the account. Non-fatal.
                     try {
@@ -212,24 +210,26 @@ class AuthController extends Controller
                             userName:    $user->firstName ?? 'there',
                             subjectLine: 'Security alert: your account was temporarily locked',
                             headline:    'Your account was temporarily locked',
-                            message:     'We locked your account for ' . self::LOGIN_LOCKOUT_MINUTES
-                                . ' minutes after ' . self::LOGIN_MAX_ATTEMPTS . ' failed sign-in attempts. '
-                                . 'You can wait it out, or reset your password to unlock right away.',
+                            message:     'We locked your account for ' . LoginLockout::duration($lockedFor)
+                                . ' after ' . LoginLockout::MAX_ATTEMPTS . ' wrong passwords in a row. '
+                                . 'If that was you, reset your password to get in right away. If it was not, '
+                                . 'reset it anyway - that also ends the lock and keeps whoever tried out.',
                             ipAddress:   $ip ?? 'unknown',
                             eventTime:   now()->format('M j, Y g:i A'),
                         ));
                     } catch (\Throwable $e) {
                         Log::warning('Lockout alert email failed: ' . $e->getMessage());
                     }
-                } else {
-                    Log::warning('Login failed: wrong password', [
-                        'email'    => $user->email,
-                        'ip'       => $ip,
-                        'attempts' => $attempts,
-                    ]);
+                    return $this->errorResponse(LoginLockout::message($lockedFor), 429);
                 }
 
-                $user->save();
+                Log::warning('Login failed: wrong password', [
+                    'email'    => $user->email,
+                    'ip'       => $ip,
+                    'attempts' => $user->failed_login_attempts,
+                ]);
+                self::logAuthEvent($request, 'auth.login_failed', $user,
+                    'Sign-in refused - wrong password', ['reason' => 'password', 'attempts' => (int) $user->failed_login_attempts]);
                 return $this->errorResponse('The email or password you entered is incorrect. Please try again.', 401);
             }
 
@@ -237,8 +237,7 @@ class AuthController extends Controller
                 return $this->errorResponse('Please verify your email before logging in.', 403);
             }
 
-            $user->failed_login_attempts = 0;
-            $user->login_locked_until    = null;
+            LoginLockout::clear($user);
 
             // Decide whether this login still needs a 2FA challenge BEFORE minting the token, so a
             // pending login receives only a limited, short-lived token - never a full session.
@@ -769,8 +768,7 @@ class AuthController extends Controller
             $user->reset_token_expires_at = null;
             // Self-service unlock: confirming identity via reset clears any active login lockout
             // (standard "unlock on identity confirmation" - no admin needed).
-            $user->login_locked_until    = null;
-            $user->failed_login_attempts = 0;
+            LoginLockout::clear($user);
             $user->save();
 
             // A changed password ends that person's other sessions - the standard answer to "it was
@@ -973,38 +971,5 @@ class AuthController extends Controller
         elseif (str_contains($userAgent, 'Linux'))    $os = 'Linux';
 
         return "{$browser} on {$os}";
-    }
-
-    /**
-     * POST /api/unlock-request
-     * Customer submits an unlock request (public, email-only).
-     */
-    public function unlockRequest(Request $request)
-    {
-        try {
-            $request->validate(['email' => 'required|email']);
-
-            // Any locked account (customer or staff) may request an unlock - a locked admin must not
-            // be shut out. Primary self-service recovery is still password reset (which clears the lock).
-            $user = User::emailIs($request->email)->first();
-
-            if (!$user) {
-                // Return success to avoid user enumeration
-                return $this->successResponse('If your account exists and is locked, your request has been submitted.');
-            }
-
-            if (!$user->login_locked_until || now()->gte($user->login_locked_until)) {
-                return $this->errorResponse('Your account is not currently locked.', 400);
-            }
-
-            $user->unlock_requested_at = now();
-            $user->save();
-
-            return $this->successResponse('Unlock request submitted. An administrator will review it shortly.');
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return $this->validationErrorResponse($e);
-        } catch (\Exception $e) {
-            return $this->serverErrorResponse($e, 'Failed to submit unlock request.');
-        }
     }
 }

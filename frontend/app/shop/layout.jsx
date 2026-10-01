@@ -115,8 +115,6 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
-  const [unlockRequesting, setUnlockRequesting] = useState(false);
-  const [unlockMsg, setUnlockMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -129,7 +127,6 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
     if (newErrors.email || newErrors.password) { setErrors(newErrors); return; }
     setErrors({ email: '', password: '' });
     setIsLocked(false);
-    setUnlockMsg('');
     setLoading(true);
 
     try {
@@ -142,7 +139,7 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
       const data = await res.json();
       if (res.status === 429) {
         setIsLocked(true);
-        setErrors({ email: '', password: data.message || 'Account temporarily locked.' });
+        setErrors({ email: '', password: data.message || 'Too many attempts. Try again later, or reset your password to get in now.' });
         return;
       }
       if (!res.ok) {
@@ -160,28 +157,6 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
       }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleUnlockRequest = async () => {
-    if (!email.trim()) {
-      setErrors(prev => ({ ...prev, email: 'Enter your email to request unlock.' }));
-      return;
-    }
-    setUnlockRequesting(true);
-    setUnlockMsg('');
-    try {
-      const res = await fetchWithTimeout(`${API_URL}/api/unlock-request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      }, 10000);
-      const data = await res.json();
-      setUnlockMsg(data.message || 'Request submitted. An admin will review it shortly.');
-    } catch {
-      setUnlockMsg('Failed to submit request. Please try again.');
-    } finally {
-      setUnlockRequesting(false);
     }
   };
 
@@ -217,20 +192,15 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
           </button>
         </div>
         {errors.password && <span className="error-message">{errors.password}</span>}
-        {isLocked && !unlockMsg && (
+        {/* Locked: the reset proves they own the email and ends the lock at once (OWASP). */}
+        {isLocked && (
           <button
             type="button"
-            onClick={handleUnlockRequest}
-            disabled={unlockRequesting}
-            style={{ marginTop: '8px', background: 'none', border: 'none', color: 'var(--gold)', cursor: unlockRequesting ? 'not-allowed' : 'pointer', fontSize: '0.84rem', textDecoration: 'underline', padding: 0 }}
+            onClick={onForgotPassword}
+            style={{ marginTop: '8px', background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.84rem', textDecoration: 'underline', padding: 0 }}
           >
-            {unlockRequesting ? 'Submitting...' : 'Request account unlock'}
+            Reset my password
           </button>
-        )}
-        {unlockMsg && (
-          <div style={{ marginTop: '8px', fontSize: '0.82rem', color: '#4ade80', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: '6px', padding: '8px 10px' }}>
-            {unlockMsg}
-          </div>
         )}
       </div>
 

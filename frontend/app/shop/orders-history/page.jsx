@@ -667,7 +667,9 @@ export default function OrdersHistoryPage() {
   // the totebag's button too, which reads as both being submitted.
   const [approvingIdx, setApprovingIdx] = useState(null);
   // Approving is binding - "we print exactly what you approve" - so it takes a second, deliberate tap.
-  const [confirmApproveIdx, setConfirmApproveIdx] = useState(null);
+  // The proof the customer is about to approve: { idx, name, variant }. Asked in its own modal so the
+  // warning is read on its own, not squeezed into the item row.
+  const [confirmApprove, setConfirmApprove] = useState(null);
   const [approveDesignError, setApproveDesignError]     = useState(null);
   const [revisionForIdx, setRevisionForIdx]             = useState(null);
   const [revisionNotes, setRevisionNotes]               = useState('');
@@ -1803,25 +1805,8 @@ export default function OrdersHistoryPage() {
                                             <div style={{ display: 'flex', gap: '6px' }}>
                                               {(() => {
                                                 const busy = approvingIdx === idx;
-                                                if (confirmApproveIdx === idx && !busy) return (
-                                                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px', borderRadius: '8px', border: '1px solid #d4a843', background: 'rgba(212,168,67,0.08)' }}>
-                                                    <div style={{ fontSize: '0.76rem', color: 'var(--white)', lineHeight: 1.5 }}>
-                                                      Checked every name, spelling, number, date and colour? We print exactly this proof, and a mistake in an approved design is not reprinted for free.
-                                                    </div>
-                                                    <div style={{ display: 'flex', gap: '6px' }}>
-                                                      <button onClick={() => { setConfirmApproveIdx(null); handleApproveAdminDesign(idx); }} disabled={anyBusy}
-                                                        style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>
-                                                        Yes, approve it
-                                                      </button>
-                                                      <button onClick={() => setConfirmApproveIdx(null)}
-                                                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.76rem', cursor: 'pointer' }}>
-                                                        Check again
-                                                      </button>
-                                                    </div>
-                                                  </div>
-                                                );
                                                 return (
-                                                  <button onClick={() => setConfirmApproveIdx(idx)} disabled={anyBusy}
+                                                  <button onClick={() => setConfirmApprove({ idx, name: it.productName || it.name || 'this item', variant: it.variantName || '' })} disabled={anyBusy}
                                                     style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: anyBusy ? 'var(--border)' : '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, cursor: anyBusy ? 'not-allowed' : 'pointer' }}>
                                                     {busy ? 'Approving...' : 'Approve'}
                                                   </button>
@@ -2721,6 +2706,46 @@ export default function OrdersHistoryPage() {
             <button onClick={() => setPayNowFailedModal(false)} style={{ width: '100%', padding: '12px', background: '#d4a843', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
               Try Again
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Approve proof confirmation ─────────────── */}
+      {confirmApprove && (
+        <div onClick={() => setConfirmApprove(null)} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="approve-proof-title" onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '14px', padding: '24px', width: '100%', maxWidth: '400px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#d4a843' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <h3 id="approve-proof-title" style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Approve this proof?</h3>
+                <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: 'var(--gray)' }}>
+                  {confirmApprove.name}{confirmApprove.variant ? ` - ${confirmApprove.variant}` : ''}
+                </p>
+              </div>
+            </div>
+            <p style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>Before you approve, check:</p>
+            <ul style={{ margin: '0 0 14px', paddingLeft: '18px', listStyle: 'disc', fontSize: '0.84rem', color: 'var(--gray)', lineHeight: 1.7 }}>
+              <li>Every name and its spelling</li>
+              <li>Numbers and dates</li>
+              <li>Colours</li>
+              <li>Size and layout</li>
+            </ul>
+            <div style={{ marginBottom: '18px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.3)', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+              We print exactly this proof. A mistake in an approved design is not reprinted for free.
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" onClick={() => setConfirmApprove(null)}
+                style={{ flex: 1, padding: '11px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.86rem', fontWeight: 600, cursor: 'pointer' }}>
+                Check again
+              </button>
+              <button type="button" disabled={approvingIdx !== null}
+                onClick={() => { const i = confirmApprove.idx; setConfirmApprove(null); handleApproveAdminDesign(i); }}
+                style={{ flex: 1, padding: '11px', borderRadius: '10px', border: 'none', background: '#d4a843', color: '#000', fontSize: '0.86rem', fontWeight: 700, cursor: approvingIdx !== null ? 'not-allowed' : 'pointer' }}>
+                Yes, approve it
+              </button>
+            </div>
           </div>
         </div>
       )}
