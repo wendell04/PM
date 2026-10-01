@@ -96,14 +96,12 @@ return [
         // Railway's block on outbound SMTP.
         'failover' => [
             'transport' => 'failover',
-            // Resend first since 2026-10-01: Brevo started accepting mail ("Sent") and not
-            // delivering it - no Delivered event, nothing in Gmail - while Resend's test arrived.
-            // A failover only moves on when a provider refuses, and Brevo was not refusing, so
-            // every order email was lost behind it. Put Brevo back first once it delivers again.
-            // Resend's free tier is 100 a day, shared with the security codes.
+            // Brevo first (300 a day), Resend only when Brevo refuses. Note: Resend steps in only on
+            // a refusal - an email Brevo accepts and then holds (as on 2026-10-01, "Sent" with no
+            // "Delivered") does not fail over. If that happens again, swap these two.
             'mailers' => [
-                'resend',
                 'brevo',
+                'resend',
             ],
             'retry_after' => 60,
         ],
