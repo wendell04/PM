@@ -30,6 +30,7 @@ class OrderStatusMail extends Mailable implements ShouldQueue
     public string $payUrl;
     public string $payLabel;
     public string $payNote;
+    public bool   $showTotal;
 
     public function __construct(
         string $firstName,
@@ -45,7 +46,8 @@ class OrderStatusMail extends Mailable implements ShouldQueue
         string $contactEmail = 'personalizemeprints@gmail.com',
         string $payUrl = '',
         string $payLabel = '',
-        string $payNote = ''
+        string $payNote = '',
+        bool $showTotal = true
     ) {
         $this->firstName      = $firstName;
         $this->orderId        = $orderId;
@@ -62,6 +64,7 @@ class OrderStatusMail extends Mailable implements ShouldQueue
         $this->payUrl         = $payUrl;
         $this->payLabel       = $payLabel;
         $this->payNote        = $payNote;
+        $this->showTotal      = $showTotal;
     }
 
     public static function key(string $status): string

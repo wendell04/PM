@@ -4859,7 +4859,7 @@ class OrderController extends Controller
                 $owed      = max(0, round((float) ($order->totalAmount ?? 0) - $paidSoFar, 2));
                 $pct       = (int) ($order->downpaymentPercent ?? 0);
                 $deposit   = $pct > 0 ? round($owed * $pct / 100, 2) : $owed;
-                $peso      = fn($n) => 'P' . number_format((float) $n, 2);
+                $peso      = fn($n) => '₱' . number_format((float) $n, 2);
 
                 $heldUntil = $order->paymentDueAt
                     ? \Carbon\Carbon::parse($order->paymentDueAt)->format('M j, Y')

@@ -50,7 +50,7 @@ class ExpireUnpaidProofs extends Command
             $paid  = collect($o->paymentHistory ?? [])->sum('amount');
             $owed  = max(0, round((float) ($o->totalAmount ?? 0) - $paid, 2));
             $pct   = (int) ($o->downpaymentPercent ?? 0);
-            $amount = 'P' . number_format($pct > 0 ? round($owed * $pct / 100, 2) : $owed, 2);
+            $amount = '₱' . number_format($pct > 0 ? round($owed * $pct / 100, 2) : $owed, 2);
             \App\Support\OrderNotifier::paymentDueAfterApproval($o, $amount,
                 \Carbon\Carbon::parse($o->paymentDueAt)->format('M j, Y'), true);
             $o->paymentDueRemindedAt = now();

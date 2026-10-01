@@ -86,7 +86,9 @@
                 </tr>
               </table>
 
-              {{-- Order Total --}}
+              {{-- Order Total. Left off the payment-due emails: next to "pay P500" it read as the
+                   amount owed, and the design fee already paid was nowhere. --}}
+              @if ($showTotal)
               <table role="presentation" cellpadding="0" cellspacing="0"
                 style="background: #f7f7f5;border-radius:8px;border:1px solid rgba(255,255,255,0.07);
                        margin-bottom:24px;width:100%;">
@@ -101,6 +103,7 @@
                   </td>
                 </tr>
               </table>
+              @endif
 
               @if ($feeNote)
                 <table role="presentation" cellpadding="0" cellspacing="0"

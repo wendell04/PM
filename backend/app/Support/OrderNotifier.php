@@ -285,8 +285,12 @@ final class OrderNotifier
                 // The night before the hold runs out (orders:expire-unpaid-proofs).
                 ? 'Reminder: order #' . $ref . ' is held until ' . $heldUntil . '. Pay ' . $dueNow
                     . ' before then to start production - after that the order is cancelled and the held materials are released.'
-                : 'Thanks for approving the design for order #' . $ref . '. Pay ' . $dueNow
-                    . ' to start production' . ($heldUntil ? ' - we hold your order until ' . $heldUntil . '.' : '.');
+                // A status, not a bill: it leaves the moment they approve, usually while they are
+                // paying on the proof page, so a Pay button here arrived for money already paid.
+                // Where to pay is said in words; the reminder below carries the button.
+                : 'Thanks for approving the design for order #' . $ref . '. Production starts once the ' . $dueNow
+                    . ' payment clears' . ($heldUntil ? ' - we hold your order until ' . $heldUntil : '')
+                    . '. If you have not paid yet, use the Pay button on the proof page or in My Orders. Your delivery days count from the day it clears.';
             try {
                 Notification::create([
                     'user_id'    => (string) $order->userId,
@@ -305,7 +309,8 @@ final class OrderNotifier
             if ($email) {
                 $name = trim((string) ($order->userSnapshot['name'] ?? ''));
                 $base = rtrim((string) config('app.frontend_url', ''), '/');
-                [$payUrl, $payLabel, $payNote] = $base !== '' ? self::payButton($order) : ['', '', ''];
+                // Only the reminder (the night before the hold runs out) carries the Pay button.
+                [$payUrl, $payLabel, $payNote] = $reminder && $base !== '' ? self::payButton($order) : ['', '', ''];
                 Mail::to($email)->send(new \App\Mail\OrderStatusMail(
                     firstName:   $name !== '' ? explode(' ', $name)[0] : 'Customer',
                     orderId:     (string) $order->_id,
@@ -315,7 +320,8 @@ final class OrderNotifier
                     orderUrl:    $base !== '' ? $base . '/shop/orders-history?order=' . $order->_id : '',
                     payUrl:      $payUrl,
                     payLabel:    $payLabel,
-                    payNote:     $payNote
+                    payNote:     $payNote,
+                    showTotal:   false
                 ));
             }
         } catch (\Throwable $e) {
