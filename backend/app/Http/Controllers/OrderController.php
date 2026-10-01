@@ -5433,9 +5433,26 @@ class OrderController extends Controller
                 }
             } catch (\Throwable $mailErr) {
                 Log::warning('adminUploadDesign: proof email failed', ['error' => $mailErr->getMessage()]);
+                // Said to the person who sent it, and kept in the Audit Log. The screen used to say
+                // "Customer has been notified" whether or not the email left, so a failed send looked
+                // like a customer ignoring their proof.
+                $mailFailed = mb_substr($mailErr->getMessage(), 0, 300);
+                try {
+                    ActivityLog::create([
+                        'action' => 'mail.failed', 'entityType' => 'order', 'entityId' => (string) $order->_id,
+                        'description' => 'Proof email to the customer failed for order #' . strtoupper(substr((string) $order->_id, -8)),
+                        'performedBy' => 'System', 'metadata' => ['orderId' => (string) $order->_id, 'mail' => 'proof_ready', 'error' => $mailFailed],
+                        'createdAt' => now(),
+                    ]);
+                } catch (\Throwable $e) { /* the warning above is still logged */ }
             }
 
-            return $this->successResponse('Design draft uploaded. Customer has been notified.', $order);
+            return $this->successResponse(
+                isset($mailFailed)
+                    ? 'Proof uploaded, but the email to the customer did not send (' . $mailFailed . '). They can still see it in My Orders - use "Send review link to chat" so they get it.'
+                    : 'Design draft uploaded. Customer has been notified.',
+                isset($mailFailed) ? array_merge($order->toArray(), ['proofEmailFailed' => true]) : $order
+            );
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);

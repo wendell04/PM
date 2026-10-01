@@ -1653,6 +1653,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       const updated = data?.data ?? data?.order ?? data;
       mergeLo(data);
       setDraftFiles([]); setShowFix(false);
+      // The proof is up but the email did not leave - say so instead of letting it look sent.
+      if (updated?.proofEmailFailed) setDesignErr(data.message);
       // Hand the parent the order we just got back. Calling this WITHOUT it made the list refetch
       // instead, and when that returned it replaced this panel's state through the `o` prop - which
       // threw away the proof we had merged a moment earlier and put the previous one back on screen.

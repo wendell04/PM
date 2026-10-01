@@ -54,6 +54,8 @@ class ActivityLog extends Model
         'auth.password_changed' => ['Changed their password', 'access'],
         'auth.email_changed'    => ['Changed their email',    'access'],
         'sale.recorded'         => ['Recorded a sale by hand', 'money'],
+        // A customer email that did not leave (the proof email, for now).
+        'mail.failed'           => ['An email to a customer failed', 'other'],
         'sale.updated'          => ['Changed a recorded sale', 'money'],
         'sale.deleted'          => ['Removed a recorded sale', 'money'],
         'sale.imported'         => ['Imported sales',          'money'],
