@@ -25,6 +25,7 @@
                 <p style="color: #444444; font-size: 14px; line-height: 1.7; margin: 0;">If you did not create an account, you can safely ignore this email.</p>
             </div>
             <div class="footer" style="padding: 20px 40px; border-top: 1px solid #e5e3de; text-align: center;">
+                @include('emails.partials.safety-notice')
                 <p style="color: #6b6b6b; font-size: 11px; margin: 0;">&copy; {{(date('Y'))}} Personalize Me Prints. All rights reserved.</p>
             </div>
         </div>

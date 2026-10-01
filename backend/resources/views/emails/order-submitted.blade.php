@@ -162,6 +162,7 @@
               <p style="margin:0 0 4px;font-size:11px;color: #444444;">
                 You received this because you placed an order request on Personalize Me Prints.
               </p>
+              @include('emails.partials.safety-notice')
               <p style="margin:0;font-size:11px;color: #333;">
                 &copy; {{ date('Y') }} Personalize Me Prints. All rights reserved.
               </p>

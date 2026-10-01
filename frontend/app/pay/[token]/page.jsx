@@ -223,6 +223,11 @@ export default function PayPage() {
       <p className="py-fine">You will hand {peso(data.deliveryFee)} to the rider in cash when your order arrives.</p>
     )}
     <p className="py-fine">Paid securely through PayMongo. No sign-in needed; this link works for this one order only.</p>
+    {/* How to tell this page from a copy: the address, and what we never ask for. */}
+    <p className="py-fine py-safe">
+      Check the address bar says <b>personalizemeprints.com/pay</b>. We never ask for your password or a sign-in code, and GCash and Maya
+      payments are always approved in their own app or page.
+    </p>
   </>);
 }
 
@@ -263,5 +268,7 @@ const css = `
   .py-btn.ghost { background: #ffffff; color: #333333; border: 1px solid rgba(0,0,0,.2); }
   .py-error { background: #fdecea; border: 1px solid #f5c2bd; color: #b3261e; border-radius: 8px; padding: .65rem .8rem; font-size: .85rem; margin-bottom: 1rem; }
   .py-fine { font-size: .76rem; color: #7a7a7a; margin: 1.1rem 0 0; line-height: 1.5; }
+  .py-safe { margin-top: .5rem; padding-top: .6rem; border-top: 1px solid rgba(0,0,0,.07); }
+  .py-safe b { color: #444444; }
   @media (max-width: 480px) { .py-card { padding: 1.25rem; } }
 `;

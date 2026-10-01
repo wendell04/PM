@@ -2363,12 +2363,9 @@ class PaymentController extends Controller
                     if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
                         $order->orderStatus = 'awaiting_production';
                     }
-                    // The isCustomOrder guard meant a READY-MADE order that settled its balance
-                    // stayed frozen at Ready for Delivery. Whether the goods were personalised has
-                    // nothing to do with whether the money arrived.
-                    if ($order->orderStatus === 'ready_for_delivery') {
-                        $order->orderStatus = 'for_delivery';
-                    }
+                    // A paid Ready for Delivery order stays there. For Delivery means a courier has
+                    // it, and only the shop knows that - it books the courier and enters the
+                    // tracking. Moving it here told the customer "on its way" before anything left.
                 }
                 $order->paymentDate             = now();
                 $order->paymentMethod           = $paymentMethod;
@@ -2809,12 +2806,9 @@ class PaymentController extends Controller
                     if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
                         $order->orderStatus = 'awaiting_production';
                     }
-                    // The isCustomOrder guard meant a READY-MADE order that settled its balance
-                    // stayed frozen at Ready for Delivery. Whether the goods were personalised has
-                    // nothing to do with whether the money arrived.
-                    if ($order->orderStatus === 'ready_for_delivery') {
-                        $order->orderStatus = 'for_delivery';
-                    }
+                    // A paid Ready for Delivery order stays there. For Delivery means a courier has
+                    // it, and only the shop knows that - it books the courier and enters the
+                    // tracking. Moving it here told the customer "on its way" before anything left.
                 }
                 if (!$this->claimPaymentReference($order, $sessionId)) {
                     return $this->successResponse('Already processed.', ['paymentStatus' => $order->paymentStatus ?? 'paid']);
@@ -2953,9 +2947,7 @@ class PaymentController extends Controller
                 if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
                     $order->orderStatus = 'awaiting_production';
                 }
-                if ($order->orderStatus === 'ready_for_delivery') {
-                    $order->orderStatus = 'for_delivery';
-                }
+                // Stays at Ready for Delivery: the shop sends it out with the courier details.
             }
             $history   = $order->paymentHistory ?? [];
             if (!$this->claimPaymentReference($order, $intentId)) {

@@ -84,6 +84,7 @@
           {{-- Footer --}}
           <tr>
             <td style="padding:20px 40px;border-top:1px solid rgba(255,255,255,0.06);text-align:center;">
+              @include('emails.partials.safety-notice')
               <p style="margin:0;font-size:11px;color: #444444;">
                 &copy; {{ date('Y') }} Personalize Me Prints. All rights reserved.
               </p>

@@ -1490,6 +1490,14 @@ class OrderController extends Controller
                 'trackingUrl.starts_with' => 'Paste the full tracking link, starting with https://',
             ]);
 
+            // Correcting the courier on an order already out: it can be changed, never emptied - the
+            // customer's "on its way" names who has it.
+            if (array_key_exists('courierName', $validated) && !isset($validated['orderStatus'])
+                && OrderStatus::normalize((string) $order->orderStatus) === OrderStatus::FOR_DELIVERY
+                && !trim((string) ($validated['courierName'] ?? ''))) {
+                return $this->errorResponse('Choose who is carrying it.', 422);
+            }
+
             $prevDeliveryMax = $order->estimatedDeliveryMax ?? null;
 
             // While the countdown has not started there is no date to move: the promise is a

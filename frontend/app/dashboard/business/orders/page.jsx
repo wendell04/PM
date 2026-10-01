@@ -1392,6 +1392,29 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     }
   };
 
+  // An order already out for delivery still needs its courier details kept right - a wrong waybill
+  // or a Lalamove link pasted after booking. These save on their own; the status does not change.
+  const [deliverySaving, setDeliverySaving] = useState(false);
+  const [deliveryNote, setDeliveryNote] = useState(null);
+  const saveDeliveryDetails = async () => {
+    if (!courier.trim()) { setDeliveryNote({ error: true, text: 'Choose who is carrying it.' }); return; }
+    setDeliverySaving(true); setDeliveryNote(null);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
+        method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ courierName: courier.trim(), trackingNumber: trackingNo.trim() || null, trackingUrl: trackingUrl.trim() || null }),
+      }, 15000);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || Object.values(data.errors || {})?.[0]?.[0] || 'Could not save. Try again.');
+      mergeLo(data);
+      setDeliveryNote({ text: 'Delivery details saved. The customer sees them on their order.' });
+    } catch (e) {
+      setDeliveryNote({ error: true, text: e.message });
+    } finally {
+      setDeliverySaving(false);
+    }
+  };
+
   const handleUpdateStatus = async () => {
     if (!selStatus || selStatus === lo.orderStatus) return;
     // The modal stays open until this SUCCEEDS. Closing it up front left the admin looking at an
@@ -2634,6 +2657,24 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     Whatever you fill in is what the customer sees on their order and in the email. A J&amp;T number
                     becomes a tracking link on its own; for Lalamove or Grab, paste their share link.
                   </span>
+                  {/* Already out for delivery: the details are saved on their own, without a status change. */}
+                  {isForDelivery(lo.orderStatus) && selStatus === lo.orderStatus && (() => {
+                    const dirty = courier.trim() !== (lo.courierName || '') || trackingNo.trim() !== (lo.trackingNumber || '') || trackingUrl.trim() !== (lo.trackingUrl || '');
+                    return (
+                      <>
+                        <button type="button" onClick={saveDeliveryDetails} disabled={!dirty || deliverySaving || !courier.trim()}
+                          style={{ ...S.btnSm, justifyContent:'center', opacity: (!dirty || !courier.trim()) ? .5 : 1, cursor: (!dirty || deliverySaving || !courier.trim()) ? 'not-allowed' : 'pointer' }}>
+                          {deliverySaving ? 'Saving...' : 'Save delivery details'}
+                        </button>
+                        {!dirty && !deliveryNote && (
+                          <span style={{ fontSize:'10.5px', color:'var(--gray)' }}>
+                            {lo.courierName ? 'Saved. Change any field to correct it.' : 'No courier saved yet - choose one and save.'}
+                          </span>
+                        )}
+                        {deliveryNote && <span style={{ fontSize:'11px', color: deliveryNote.error ? 'var(--st-red-fg)' : 'var(--st-green-fg)' }}>{deliveryNote.text}</span>}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
               {String(selStatus).toLowerCase() === 'returned' && (
