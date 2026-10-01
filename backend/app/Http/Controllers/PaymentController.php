@@ -3333,6 +3333,11 @@ class PaymentController extends Controller
                 && (float) ($order->designFee ?? 0) > 0
                 && !($order->designFeePaid ?? false);
 
+            // The goods of a request-design order are payable only once the proof is approved.
+            if (!$payDesignFee && !$payCourierFee && \App\Support\DesignGate::awaitingApproval($order)) {
+                return $this->errorResponse(\App\Support\DesignGate::MESSAGE, 422);
+            }
+
             // ── Downpayment vs full-payment resolution ────────────────────
             if (!$payDesignFee && !$payFull && $order->paymentStatus === 'unpaid') {
                 $dpPercent = (int) ($order->downpaymentPercent ?? 0);

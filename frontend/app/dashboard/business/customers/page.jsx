@@ -166,7 +166,7 @@ export default function CustomersPage() {
             <div style={{
               padding: '12px 20px',
               borderBottom: unlockRequests.length > 0 ? '1px solid rgba(251,191,36,0.15)' : 'none',
-              display: 'flex', alignItems: 'center', gap: '10px',
+              display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
             }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
                 stroke={unlockRequests.length > 0 ? '#D4A843' : 'var(--gray)'} strokeWidth="2">
@@ -195,22 +195,12 @@ export default function CustomersPage() {
                   All clear
                 </span>
               )}
+              {unlockRequests.length === 0 && (
+                <span style={{ fontSize: '0.78rem', color: 'var(--gray)', flex: '1 1 260px', minWidth: 0 }}>
+                  Nobody is locked out. A customer locked out after 5 wrong passwords can ask to be let back in, and it shows here.
+                </span>
+              )}
             </div>
-
-            {/* Empty state */}
-            {unlockRequests.length === 0 && (
-              <div style={{
-                padding: '14px 20px',
-                display: 'flex', alignItems: 'center', gap: '10px',
-                color: 'var(--gray)', fontSize: '0.82rem',
-              }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                  <polyline points="22 4 12 14.01 9 11.01"/>
-                </svg>
-                No pending unlock requests. Customers who get locked out can submit a request here.
-              </div>
-            )}
 
             {/* Request rows */}
             {unlockRequests.map((c, idx) => (
@@ -362,13 +352,12 @@ export default function CustomersPage() {
 
         {/* Customer list */}
         {!loading && !error && paged.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(380px, 100%), 1fr))', gap: '12px', alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(380px, 100%), 1fr))', gap: '12px', alignItems: 'stretch' }}>
             {paged.map(c => (
               <div key={c.id} style={{
-                display: 'flex', alignItems: 'center', gap: '14px',
-                padding: '14px 18px', borderRadius: '12px',
+                display: 'flex', alignItems: 'flex-start', gap: '14px',
+                padding: '16px 18px', borderRadius: '12px',
                 background: 'var(--dark2)', border: `1px solid ${c.is_locked ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`,
-                flexWrap: 'wrap',
               }}>
                 <Avatar customer={c} size={42} />
 
@@ -459,7 +448,7 @@ export default function CustomersPage() {
 
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', flexShrink: 0 }}>
                   <button
                     type="button"
                     onClick={() => handleChat(c)}

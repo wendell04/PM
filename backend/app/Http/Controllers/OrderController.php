@@ -956,6 +956,9 @@ class OrderController extends Controller
             if (($order->paymentStatus ?? '') === 'paid' || $balance <= 0) {
                 return $this->errorResponse('This order has no outstanding balance.', 422);
             }
+            if (\App\Support\DesignGate::awaitingApproval($order)) {
+                return $this->errorResponse('The proof is not approved yet, so there is nothing to remind them to pay - the goods are paid after approval.', 422);
+            }
 
             $last = $order->balanceReminderAt ? \Carbon\Carbon::parse($order->balanceReminderAt) : null;
             if ($last && $last->diffInHours(now()) < 6) {

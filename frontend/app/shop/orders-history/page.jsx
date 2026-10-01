@@ -36,6 +36,8 @@ function orderBucket(o) {
   if (s === 'delivered' || raw === 'Paid') return 'Completed';
   if (s === 'for_delivery' || raw === 'shipped' || raw === 'ready_for_pickup') return 'To Receive';
   if (raw === 'awaiting_payment') return 'To Pay';
+  // Still being drawn or waiting on their approval: nothing to pay yet, so not "To Pay".
+  if (awaitingProofApproval(o) && !owesDesignFee(o)) return 'In Progress';
   // "To Pay" means money is still owed on a real order - most often a downpaid order whose
   // balance is still outstanding. An online order that was never paid at all belongs here
   // too, since it is waiting on the same thing.
@@ -118,6 +120,19 @@ function ItemProgressNote({ jobs }) {
 // order still carries a design fee for its requested line. Keying the fee gate on designType meant
 // the Pay Design Fee block never appeared on a mixed order and the deposit could be paid first -
 // bypassing the whole design-fee-first rule. Ask the items instead; they cannot lie about it.
+// A requested design not approved yet: the goods are paid after approval, so nothing but the design
+// fee is due. Same rule as the server's App\Support\DesignGate.
+function awaitingProofApproval(order) {
+  if (order?.orderRequestId || order?.orderSource === 'inquiry') return false;
+  const requested = (order?.items ?? []).filter(i => i?.designRequested || i?.designMode === 'request');
+  if (!requested.length) return false;
+  const orderApproved = String(order?.designStatus ?? '').toLowerCase() === 'approved';
+  return requested.some(i => {
+    const st = String(i?.designStatus ?? '').toLowerCase();
+    return !(st === 'approved' || (st === '' && orderApproved));
+  });
+}
+
 function owesDesignFee(order) {
   // A quotation's design fee is part of the quoted price, paid with the downpayment or in full.
   if (order?.orderRequestId || order?.orderSource === 'inquiry') return false;
@@ -1598,8 +1613,11 @@ export default function OrdersHistoryPage() {
                             outstanding turns a date they cannot explain into one they can move. */}
                         {(() => {
                           const st = String(selectedOrder.designStatus ?? '');
-                          const waitingOnDesign = st !== '' && st !== 'approved';
-                          const owes = remainingDue(selectedOrder) > 0 && goodsPaid(selectedOrder) <= 0;
+                          // A requested design still being drawn waits on us, not on their payment -
+                          // the goods are not payable until they approve the proof.
+                          const proofPending = awaitingProofApproval(selectedOrder);
+                          const waitingOnDesign = (st !== '' && st !== 'approved') || proofPending;
+                          const owes = !proofPending && remainingDue(selectedOrder) > 0 && goodsPaid(selectedOrder) <= 0;
                           if (!waitingOnDesign && !owes) return null;
                           if (holdEnded(selectedOrder)) return null;   // the hold notice says what happened
                           if (['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)) return null;
@@ -1609,7 +1627,9 @@ export default function OrdersHistoryPage() {
                               ? 'your approval of the proof'
                               : st === 'revision_requested'
                                 ? 'the new proof we are working on'
-                                : 'our check of your file');
+                                : proofPending
+                                  ? 'the proof our designer is drawing, then your approval'
+                                  : 'our check of your file');
                           }
                           if (owes) bits.push('your payment');
                           return (
@@ -2263,6 +2283,9 @@ export default function OrdersHistoryPage() {
                             ? (String(selectedOrder.courierFeePaidMethod || '') === 'rider_cash'
                                 ? 'Paid to the rider in cash'
                                 : 'Received - nothing to pay the rider')
+                            : awaitingProofApproval(selectedOrder)
+                              // Nothing is payable before approval, so there is no "below" yet.
+                              ? (!riderCollects ? 'Paid with your order after you approve the proof' : 'Pay it with your order after approval, or hand it to the rider')
                             : !riderCollects
                               ? 'Pay it below before we ship'
                               : dispatched
@@ -2400,7 +2423,17 @@ export default function OrdersHistoryPage() {
                         If you still want it, message us in the order chat and we will set it up again.
                       </div>
                     )}
+                    {/* Request a design, proof not approved yet: the goods are not payable. */}
+                    {!owesDesignFee(selectedOrder) && awaitingProofApproval(selectedOrder)
+                      && !['cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus) && (
+                      <div style={{ margin: '0 18px 18px', padding: '10px 12px', borderRadius: '8px', background: 'var(--dark)', border: '1px solid var(--border)', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+                        <strong style={{ color: 'var(--white)' }}>Nothing to pay yet.</strong>{' '}
+                        You pay for the order after you approve the proof - we will email you as soon as it is ready.
+                        {selectedOrder.designFeePaid ? ' Your design fee is already paid.' : ''}
+                      </div>
+                    )}
                     {!owesDesignFee(selectedOrder)
+                      && !awaitingProofApproval(selectedOrder)
                       && !holdEnded(selectedOrder)
                       && selectedOrder.paymentStatus !== 'paid'
                       && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)

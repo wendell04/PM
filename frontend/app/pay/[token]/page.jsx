@@ -162,6 +162,16 @@ export default function PayPage() {
     <a className="py-btn ghost" href="/shop/orders-history">See the order</a>
   </>);
 
+  // A requested design not approved yet: only the design fee is due, the goods come after approval.
+  if (data.awaitingProof) return shell(<>{head}
+    <h1 className="py-title">Nothing to pay yet</h1>
+    <p className="py-lede">
+      You pay for this order after you approve the proof. We will email you as soon as it is ready - until then,
+      only the design fee is due{data.paid > 0 ? ', and that is already paid' : ''}.
+    </p>
+    <a className="py-btn ghost" href="/shop/orders-history">Open My Orders</a>
+  </>);
+
   if (data.cod) return shell(<>{head}
     <h1 className="py-title">Pay on delivery</h1>
     <p className="py-lede">This order is paid in cash when it arrives: {peso(data.balance)}. Nothing to pay online.</p>
