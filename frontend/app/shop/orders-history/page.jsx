@@ -2725,15 +2725,13 @@ export default function OrdersHistoryPage() {
                 </p>
               </div>
             </div>
-            <p style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>Before you approve, check:</p>
-            <ul style={{ margin: '0 0 14px', paddingLeft: '18px', listStyle: 'disc', fontSize: '0.84rem', color: 'var(--gray)', lineHeight: 1.7 }}>
-              <li>Every name and its spelling</li>
-              <li>Numbers and dates</li>
-              <li>Colours</li>
-              <li>Size and layout</li>
-            </ul>
+            {/* Short on purpose: the proof is often a mockup on the item, not the print file, so it
+                asks for the checks that matter and says plainly that approval makes it final. */}
+            <p style={{ margin: '0 0 14px', fontSize: '0.86rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+              Double-check the names, dates, photo and colours before approving.
+            </p>
             <div style={{ marginBottom: '18px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.3)', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.55 }}>
-              We print exactly this proof. A mistake in an approved design is not reprinted for free.
+              This is a preview only. Once approved, the design is final.
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button type="button" onClick={() => setConfirmApprove(null)}
