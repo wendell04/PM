@@ -1451,6 +1451,11 @@ export default function SSAForecastPage() {
   const [dataPointCount, setDataPointCount] = useState(0);
   const [trainingPeriods, setTrainingPeriods] = useState(null);
   const [backtestData, setBacktestData] = useState([]);
+  // Period-by-period scoring of the test window, from /api/comparative. It is
+  // the only place bias is computed - whether the model runs systematically high
+  // or low, which none of the other figures answer. Null until it answers, and
+  // the page carries on without it if it does not.
+  const [comparative, setComparative] = useState(null);
   const [rawRows, setRawRows] = useState([]);
   const [lastRunAt, setLastRunAt] = useState(null);
   const [pickerDate, setPickerDate] = useState("");
@@ -1602,6 +1607,7 @@ export default function SSAForecastPage() {
       setDataPointCount(rows.length);
       setTrainingPeriods(rows.length);
       setBacktestData([]);
+      setComparative(null);   // the fallback runs no backtest, so there is nothing to score
       setDepletionMethod("average");
     };
 
@@ -1812,10 +1818,33 @@ export default function SSAForecastPage() {
           btSeries.dates.map((date, i) => ({
             date,
             BacktestActual: btSeries.actuals[i],
+            BacktestForecast: btSeries.predictions?.[i] ?? null,
           })),
         );
+        // Score the same window period by period. This is the one call that
+        // returns bias, so it answers a question the accuracy card cannot: not
+        // "how far off" but "off which way, and always?". Deliberately not
+        // awaited into the main path - the forecast is already on screen and a
+        // failure here must not take it down with it.
+        setComparative(null);
+        const series = btSeries.dates.map((period, i) => ({
+          period,
+          actual: btSeries.actuals[i],
+          forecast: btSeries.predictions?.[i] ?? null,
+        }));
+        if (series.length >= 2) {
+          ssaFetch(`${SSA_API_URL}/api/comparative`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ series, threshold_pct: 20 }),
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((c) => setComparative(c))
+            .catch(() => setComparative(null));
+        }
       } else {
         setBacktestData([]);
+        setComparative(null);
       }
     } catch (err) {
       // Inventory always degrades to an average-demand projection rather than
@@ -3997,6 +4026,91 @@ export default function SSAForecastPage() {
                 </div>
               </div>
               )
+            )}
+
+            {/* How the test window scored, period by period. The accuracy card
+                says how far off the model was; this says which way, and whether
+                it misses the same way every time - the one thing bias answers
+                and no other figure here does. */}
+            {!isInvMode && comparative?.metrics && (
+              <div className="ssa-card">
+                <div className="ssa-card-header">
+                  <h2 className="ssa-card-title">Forecast vs actual</h2>
+                  <span style={{ fontSize: "12px", color: "var(--gray)" }}>
+                    the {comparative.total_periods}-period test window
+                  </span>
+                </div>
+
+                {(() => {
+                  const m = comparative.metrics;
+                  const over = m.bias > 0;
+                  const sameWay = comparative.comparison.filter((r) => r.direction === (over ? "over" : "under")).length;
+                  const unit = submittedConfig?.source === "sales_revenue" ? "₱" : "";
+                  const fmt = (v) => `${unit}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+                  return (
+                    <>
+                      <p style={{ fontSize: "14px", color: "var(--gray)", margin: "0 0 16px", lineHeight: 1.6 }}>
+                        On average the forecast ran{" "}
+                        <strong style={{ color: over ? "var(--st-amber-fg)" : "var(--st-blue-fg)" }}>
+                          {fmt(m.bias)} {over ? "high" : "low"}
+                        </strong>
+                        {m.bias_pct != null && (
+                          <> ({Math.abs(m.bias_pct).toFixed(1)}% of actual)</>
+                        )}
+                        , and missed that way in <strong style={{ color: "var(--white)" }}>{sameWay} of {comparative.total_periods}</strong>{" "}
+                        periods.{" "}
+                        {sameWay >= comparative.total_periods - 1
+                          ? "Missing the same way nearly every period is a systematic lean, not scatter - the level is off rather than the timing."
+                          : "The misses fall on both sides, so this is scatter rather than a systematic lean."}
+                      </p>
+
+                      <div className="ssa-units-summary" style={{ marginBottom: "16px" }}>
+                        <div><span className="k">Within {m.threshold_pct}%</span><span className="v gold">{m.hit_rate != null ? `${m.hit_rate}%` : "—"}</span></div>
+                        <div><span className="k">Scored on</span><span className="v">{m.hit_rate_scored} of {comparative.total_periods}</span></div>
+                        <div><span className="k">RMSE</span><span className="v">{fmt(m.rmse)}</span></div>
+                        <div><span className="k">MAE</span><span className="v">{fmt(m.mae)}</span></div>
+                      </div>
+
+                      <div className="ssa-tbl-wrap">
+                        <table className="ssa-table">
+                          <thead>
+                            <tr>
+                              <th>Period</th>
+                              <th style={{ textAlign: "right" }}>Actual</th>
+                              <th style={{ textAlign: "right" }}>Forecast</th>
+                              <th style={{ textAlign: "right" }}>Error</th>
+                              <th style={{ textAlign: "right" }}>Off by</th>
+                              <th>Direction</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {comparative.comparison.map((r, i) => (
+                              <tr key={i}>
+                                <td>{formatDateLabel(r.period, submittedConfig?.period?.type)}</td>
+                                <td style={{ textAlign: "right" }}>{fmt(r.actual)}</td>
+                                <td style={{ textAlign: "right" }}>{fmt(r.forecast)}</td>
+                                <td style={{ textAlign: "right" }}>{fmt(r.error)}</td>
+                                <td style={{ textAlign: "right", color: r.actual > 0 ? (r.within_threshold ? "var(--st-green-fg)" : "var(--gray)") : "var(--gray)" }}>
+                                  {/* A period with no sales has no percentage to be off by. */}
+                                  {r.actual > 0 ? `${r.pct_error.toFixed(0)}%` : "no sales"}
+                                </td>
+                                <td>
+                                  <span className="ssa-rfm-badge" style={{
+                                    background: r.direction === "over" ? "var(--st-amber-bg)" : r.direction === "under" ? "var(--st-blue-bg)" : "var(--st-gray-bg)",
+                                    color:      r.direction === "over" ? "var(--st-amber-fg)" : r.direction === "under" ? "var(--st-blue-fg)" : "var(--st-gray-fg)",
+                                  }}>
+                                    {r.direction === "over" ? "too high" : r.direction === "under" ? "too low" : "exact"}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
             )}
           </>
         )}
