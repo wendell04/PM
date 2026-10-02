@@ -19,12 +19,21 @@ class ChatController extends Controller
     /**
      * List conversations for the authenticated user.
      */
+    /** The storefront chat widget asks for the customer view (?as=customer) for every user. */
+    private static function asCustomer(Request $request): bool
+    {
+        return $request->query('as') === 'customer';
+    }
+
     public function index(Request $request)
     {
         try {
             $user = $request->user();
             // Sees the shop's whole inbox: owner, system admin, and staff with the Messages row.
-            $isAdmin = \App\Support\ChatAccess::shopSide($user);
+            // Not from the storefront chat, though: staff shopping as customers there saw every
+            // customer's thread in a customer's window. That widget asks for the customer view.
+            $asCustomer = self::asCustomer($request);
+            $isAdmin = !$asCustomer && \App\Support\ChatAccess::shopSide($user);
 
             // Customers see their own threads. The shop side sees THE SHOP's threads - one per customer,
             // shared by everyone on the inbox - plus any it is personally in. Listing only the reader's
@@ -59,6 +68,9 @@ class ChatController extends Controller
                 // account and a member of staff is a private one - only the people in it see it.
                 $readerIn = in_array((string) $user->_id, array_map('strval', (array) $c->participants), true);
                 if ($isAdmin && !$readerIn && $other && ($other->role ?? 'customer') !== 'customer') continue;
+                // In the customer view only the thread with the shop belongs: a member of staff can
+                // still be a participant in old threads with customers from before the shared inbox.
+                if ($asCustomer && $other && ($other->role ?? 'customer') === 'customer') continue;
                 
                 if ($otherId) $existingParticipantIds[] = (string)$otherId;
                 
@@ -96,7 +108,7 @@ class ChatController extends Controller
             // Always inject Support for customers if not already in conversations
             if (!$isAdmin) {
                 $admin = \App\Support\ChatAccess::shopAccount();
-                if ($admin && !in_array((string)$admin->_id, $existingParticipantIds)) {
+                if ($admin && (string) $admin->_id !== $me && !in_array((string)$admin->_id, $existingParticipantIds)) {
                     // Put Support at the very top
                     array_unshift($standardized, [
                         '_id'             => 'support_auto',
@@ -333,7 +345,8 @@ class ChatController extends Controller
                 // talks back. recipient_id was free-form, so one customer could open a thread with
                 // another and message them unsolicited - a channel nobody asked for and nobody
                 // moderates. Staff keep the run of the place; customers reach the shop only.
-                $isStaff = \App\Support\ChatAccess::canReply($user);
+                // From the storefront chat a member of staff is a customer writing to the shop.
+                $isStaff = !self::asCustomer($request) && \App\Support\ChatAccess::canReply($user);
                 if (!$isStaff) {
                     $recipient = User::find($recipientId);
                     if (!$recipient || !in_array($recipient->role ?? null, ['admin', 'owner'], true)) {
@@ -521,8 +534,9 @@ class ChatController extends Controller
             // blocks an order could sit unanswered for days with nobody told it had been asked.
             try {
                 $recipientId = (string) $request->input('recipient_id', '');
-                $senderIsStaff = in_array($user->role ?? null, ['admin', 'owner', 'superAdmin', 'staff'], true)
-                    || !empty($user->role) && $user->role !== 'customer';
+                $senderIsStaff = !self::asCustomer($request)
+                    && (in_array($user->role ?? null, ['admin', 'owner', 'superAdmin', 'staff'], true)
+                        || !empty($user->role) && $user->role !== 'customer');
                 if (($recipientId === '' || $senderIsStaff) && !empty($conversation->participants)) {
                     $others = collect($conversation->participants)->map(fn ($p) => (string) $p)
                         ->reject(fn ($pid) => $pid === (string) $user->_id)->values();

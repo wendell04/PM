@@ -147,7 +147,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     if (!token || !user) return;
     try {
       setIsLoadingConvs(true);
-      const convs = await getConversations(token);
+      const convs = await getConversations(token, { asCustomer: true });
       setConversations(convs);
       setUnreadTotal(convs.reduce((s, c) => s + (c.unread_count || 0), 0));
 
@@ -311,7 +311,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
         actualPayload.recipient_id = activeConv.other_user.id;
         delete actualPayload.conversation_id;
       }
-      const newMessage = normalizeMsg(await sendMessage(token, actualPayload));
+      const newMessage = normalizeMsg(await sendMessage(token, actualPayload, { asCustomer: true }));
 
       // Replace the optimistic bubble with the confirmed message. If the realtime socket already
       // delivered the same message (it can beat the HTTP response), just drop the placeholder instead
@@ -321,7 +321,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
         : prev.map(m => m._id === tempId ? { ...newMessage, clientKey: m.clientKey } : m));
 
       if (isNewConv) {
-        const convs = await getConversations(token);
+        const convs = await getConversations(token, { asCustomer: true });
         const real = convs.find(c => c._id === newMessage.conversation_id);
         if (real) setActiveConv(real);
         setConversations(convs);

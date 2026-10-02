@@ -2,12 +2,16 @@ import { fetchWithTimeout } from './fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
+// The storefront chat passes { asCustomer: true }: staff shopping there are customers talking to
+// the shop, not the shop's inbox.
+const side = (opts) => (opts?.asCustomer ? '?as=customer' : '');
+
 /**
  * Get all conversations for the authenticated user
  */
-export async function getConversations(token) {
+export async function getConversations(token, opts) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/chat/conversations`, {
+    const response = await fetchWithTimeout(`${API_URL}/api/chat/conversations${side(opts)}`, {
       method: 'GET',
       // Belt and braces with the API's own no-store: the inbox is the one list where a stale
       // empty answer looks exactly like having no customers.
@@ -58,9 +62,9 @@ export async function getMessages(token, conversationId) {
 /**
  * Send a message
  */
-export async function sendMessage(token, payload) {
+export async function sendMessage(token, payload, opts) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/chat/messages`, {
+    const response = await fetchWithTimeout(`${API_URL}/api/chat/messages${side(opts)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
