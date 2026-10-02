@@ -44,6 +44,18 @@ class BenchmarkRequest(BaseModel):
 FREQ = {"weekly": "W-MON", "monthly": "MS", "annually": "YS"}
 SEASON = {"weekly": 52, "monthly": 12, "annually": 1}
 
+# The shop's clock, matching ssa-service and the dashboard. A bare
+# pd.Timestamp.now() is the HOST's local time, and the backend declares
+# Asia/Manila; this box runs on it so the two agreed, but any ordinary UTC host
+# would not, and "today" decides both how far a demand series runs and how far
+# the SSA call has to shift its window.
+BUSINESS_TZ = os.getenv("SSA_BUSINESS_TZ", "Asia/Manila")
+
+
+def business_now() -> pd.Timestamp:
+    """Now, on the shop's clock, tz-naive to match the period labels."""
+    return pd.Timestamp.now(tz=BUSINESS_TZ).tz_localize(None)
+
 def _period_key(dt: pd.Timestamp, ftype: str) -> pd.Timestamp:
     if ftype == "weekly":
         return dt - pd.Timedelta(days=dt.dayofweek)     # Monday of the week
@@ -51,15 +63,31 @@ def _period_key(dt: pd.Timestamp, ftype: str) -> pd.Timestamp:
         return dt.replace(day=1)
     return dt.replace(month=1, day=1)
 
-def aggregate(rows: List[Row], ftype: str):
-    """Bucket raw rows into a continuous, zero-filled period series."""
+def aggregate(rows: List[Row], ftype: str, end: "pd.Timestamp | None" = None):
+    """Bucket raw rows into a continuous, zero-filled period series.
+
+    `end` extends the series past the last row, which matters for material
+    demand. The stock ledger only records days something MOVED, so the series
+    stopped at the last movement and the weeks since - real weeks in which the
+    shop consumed none of that material - were simply absent. That is demand
+    information, and dropping it both misrepresents the pattern and shortens the
+    series: the busiest material reached 6 weekly periods where the ledger had
+    been running for 19, which is below this benchmark's own 12-period minimum.
+
+    Sales pass no `end`. There a trailing empty stretch means "nothing recorded
+    yet" rather than "none sold", and the SSA service trims it for the same
+    reason - the `is_sparse` guard on its own trailing-zero trim.
+    """
     if not rows:
         return [], np.array([])
     df = pd.DataFrame([{"date": pd.to_datetime(r.date), "value": r.value} for r in rows])
     df = df.dropna(subset=["date"])
     df["period"] = df["date"].apply(lambda d: _period_key(d, ftype))
     grp = df.groupby("period")["value"].sum().sort_index()
-    full = pd.date_range(grp.index.min(), grp.index.max(), freq=FREQ[ftype])
+    last = grp.index.max()
+    if end is not None:
+        last = max(last, _period_key(pd.Timestamp(end), ftype))
+    full = pd.date_range(grp.index.min(), last, freq=FREQ[ftype])
     grp = grp.reindex(full, fill_value=0.0)
     dates = [d.strftime("%Y-%m-%d") for d in grp.index]
     return dates, grp.values.astype(float)
@@ -151,7 +179,7 @@ def ssa_forecast(train_dates, train_vals: np.ndarray, h: int, ftype: str,
         freq, cycle = {"weekly": ("W-MON", pd.Timedelta(weeks=52)),
                        "monthly": ("MS", pd.DateOffset(months=12)),
                        "annually": ("YS", pd.DateOffset(years=1))}.get(ftype, ("W-MON", pd.Timedelta(weeks=52)))
-        now = pd.Timestamp.now().normalize()
+        now = business_now().normalize()
         shifted = idx
         for _ in range(40):                      # bounded; each step is one cycle
             if shifted[-1] >= now:
@@ -196,10 +224,19 @@ def _data_type_for(series: str) -> str:
 
 def run_benchmark(rows, forecast_type, forecast_periods, data_type="sales"):
     ftype = forecast_type if forecast_type in FREQ else "weekly"
-    dates, y = aggregate(rows, ftype)
+    # A demand series runs to today: the weeks since the last movement are weeks
+    # of zero consumption, not missing data. See aggregate().
+    dates, y = aggregate(rows, ftype, end=business_now() if data_type != "sales" else None)
     n = len(y)
     if n < 12:
-        raise HTTPException(400, f"Not enough history ({n} {ftype} periods). Need at least 12 for a benchmark.")
+        # Say how far short, not just that it is short. "Need at least 12" left
+        # the reader to work out whether that was one more week of trading or ten.
+        raise HTTPException(
+            400,
+            f"Not enough history: {n} {ftype} periods, {12 - n} short of the 12 a "
+            f"benchmark needs. Each model is scored on held-out windows, and below "
+            f"12 there is not enough left to train on after holding any out.",
+        )
 
     h = max(1, min(forecast_periods, 12))
     season_full = SEASON[ftype]
