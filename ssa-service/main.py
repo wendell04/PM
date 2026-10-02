@@ -476,12 +476,12 @@ async def forecast(req: ForecastRequest):
         ssa       = SSA(df["Value"].values, L=L)
         threshold = 0.01
 
-        # ── FIX A: Sparsity-aware max_comp selection ──────────────────────────
-        # With dense data, using 4 SSA components captures trend + multiple
-        # seasonal harmonics. With sparse (mostly-zero) data, higher components
-        # capture spike noise as if it were seasonality and project it forward —
-        # inflating the forecast. Limit components based on the non-zero ratio
-        # so the model stays conservative on intermittent demand series.
+        # ── Sparsity-aware component count ────────────────────────────────────
+        # With dense data five components capture trend plus two seasonal
+        # harmonic pairs. With sparse (mostly-zero) data the higher ones fit
+        # spike noise as though it were seasonality and project it forward,
+        # inflating the forecast - so the count comes down with the non-zero
+        # ratio and the model stays conservative on intermittent demand.
         # Sparsity and volatility computed on real (unfloored) values
         nonzero_ratio = float(np.sum(original_values > 0) / len(original_values))
 
@@ -493,18 +493,22 @@ async def forecast(req: ForecastRequest):
         cv = float(np.std(_nz_vals) / np.mean(_nz_vals)) if len(_nz_vals) > 1 else 0.0
         is_high_volatility = cv > 1.5
 
+        # max_comp is the highest component INDEX kept, so the count below is
+        # max_comp + 1. The comments here used to name the count and were each
+        # one short: max_comp = 1 is trend plus one harmonic, not "only trend".
         if forecast_type == "monthly" and n < 40:
-            max_comp = 2
+            max_comp = 2                      # 3 components
         elif forecast_type == "annually":
-            max_comp = 4 if n >= 36 else 2
+            max_comp = 4 if n >= 36 else 2    # 5 with 3 years of months, else 3
         elif nonzero_ratio < 0.30:
-            # Very sparse weekly: only the trend component — seasonality is noise here
-            max_comp = 1
+            # Very sparse weekly: trend plus a single harmonic. Anything beyond
+            # that fits the gaps between spikes and projects them as season.
+            max_comp = 1                      # 2 components
         elif nonzero_ratio < 0.60:
-            # Moderately sparse: trend + one harmonic
-            max_comp = 2
+            # Moderately sparse: trend plus two.
+            max_comp = 2                      # 3 components
         else:
-            max_comp = 4
+            max_comp = 4                      # 5 components: trend + 2 harmonic pairs
 
         components = [
             c for c in range(max_comp + 1)
@@ -537,15 +541,31 @@ async def forecast(req: ForecastRequest):
         else:  # annually — 12 monthly periods = 1 full calendar year for backtest
             bt_periods = max(1, min(12, n - 10))
 
-        # ── FIX 5: Smart backtest window ──────────────────────────────────────
-        # For sparse data the tail window is often all-zeros → SMAPE = None.
-        # Walk backward to find a window with the most non-zero actuals while
-        # keeping at least 10 training rows. Fall back to tail if nothing better.
+        # ── Backtest window ──────────────────────────────────────────────────
+        # For sparse data the tail window is often all zeros, which leaves MAPE
+        # undefined, so this may slide the window back to find periods it can
+        # actually score. Sliding has a cost, and it used to be unbounded: the
+        # floor was 10 training rows, so on a 197-week series the window could
+        # land at row 16 and the figure on screen would describe a model trained
+        # on 16 periods while the forecast beside it was trained on 190. That is
+        # the same fault as scoring raw SSA against a dampened chart - an
+        # accuracy for a model nobody is looking at - reached a different way.
+        #
+        # Measured on this function before the bound: with three-quarters of
+        # weeks quiet it kept the most recent window in only 18 of 200 runs and
+        # slid back 28 weeks on average. Dense revenue never triggered it.
+        #
+        # The window may now slide by at most its own length, so the backtest
+        # stays recent and its training set stays within one window of the real
+        # model's. When that is not enough to find a scoreable window the
+        # all-zero path is the honest answer, and the page already labels it
+        # ("backtest weeks had no sales - using MAE ratio").
         def find_best_bt_start(values, bt_p, min_train=10):
             n_vals     = len(values)
             best_start = n_vals - bt_p
             best_nz    = int(np.sum(values[best_start:] > 0))
-            for start in range(n_vals - bt_p, min_train - 1, -1):
+            floor      = max(min_train, n_vals - 2 * bt_p)
+            for start in range(n_vals - bt_p, floor - 1, -1):
                 nz = int(np.sum(values[start:start + bt_p] > 0))
                 if nz > best_nz:
                     best_nz    = nz
@@ -558,7 +578,9 @@ async def forecast(req: ForecastRequest):
         # missing key from a real None. Everything here means "not measured".
         accuracy        = {"mape": None, "mae": None, "backtest_n": bt_periods,
                            "mape_scored": 0, "mape_total": 0, "mase": None, "rmse": None, "anomaly": None,
-                           "training_gap": 0, "mape_reliable": False}
+                           "training_gap": 0, "mape_reliable": False,
+                           "backtest_from": None, "backtest_to": None,
+                           "backtest_train_n": 0, "backtest_is_recent": None}
         backtest_series = {"dates": [], "actuals": [], "predictions": []}
 
         if n - bt_periods >= 10:
@@ -747,6 +769,18 @@ async def forecast(req: ForecastRequest):
                                          and mape_val is not None
                                          and mape_scored >= 4
                                          and _gap_run < _gap_limit,
+                    # WHEN the figure was measured, and on how much training.
+                    # Without these the caller is told "averaged over 5 of 8
+                    # periods" and cannot tell whether those periods were last
+                    # month or two years ago, nor that the window may have slid
+                    # off the tail to find them. backtest_is_recent is False
+                    # exactly when it slid, which is the case worth a caveat.
+                    "backtest_from":     pd.Timestamp(bt_display_dates[0]).strftime("%Y-%m-%d")
+                                         if len(bt_display_dates) else None,
+                    "backtest_to":       pd.Timestamp(bt_display_dates[-1]).strftime("%Y-%m-%d")
+                                         if len(bt_display_dates) else None,
+                    "backtest_train_n":  int(bt_start),
+                    "backtest_is_recent": bool(bt_start == n - bt_periods),
                 }
                 backtest_series = {
                     "dates":       pd.DatetimeIndex(bt_display_dates).strftime("%Y-%m-%d").tolist(),
@@ -843,10 +877,17 @@ async def forecast(req: ForecastRequest):
             hist_mean = float(hist_vals.mean()) if len(hist_vals) > 0 else 1.0
         cap = max(hist_max * 1.5, hist_mean * 2, 1.0)
 
-        # ── FIX 4: Cap CI growth so it doesn't explode on long horizons ──────
+        # ── Cap CI growth so it doesn't explode on long horizons ─────────────
         # noise_std on sparse spike data can be very large (residuals from spike
-        # weeks dominate). Cap CI so upper never exceeds the historical max and
-        # lower is always at least 20% of the forecast (never pure zero).
+        # weeks dominate), so the upper bound is held to just above the
+        # historical max rather than running away.
+        #
+        # The lower bound is only held at zero. It used to be floored at 20% of
+        # the point forecast - "never pure zero" - which on an intermittent
+        # material excluded the single most likely outcome from a band the page
+        # draws as "Likely range". That is the same cosmetic floor as the history
+        # line that drew P4,500 on 1,055 days with no sale. The page's own
+        # fallback band already allowed zero, so the two disagreed.
         n_out      = len(out_vals)
         max_growth = np.sqrt(extended_steps)
         if forecast_type == "annually":
@@ -868,7 +909,7 @@ async def forecast(req: ForecastRequest):
             for i in range(n_out)
         ]
         conf_low = [
-            float(max(out_vals[i] * 0.20, out_vals[i] - 1.96 * ci_scale * min(np.sqrt(gap_offset + i + 1), max_growth)))
+            float(max(0.0, out_vals[i] - 1.96 * ci_scale * min(np.sqrt(gap_offset + i + 1), max_growth)))
             for i in range(n_out)
         ]
 

@@ -1295,6 +1295,14 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
   const scored = accuracy.mape_scored ?? null;
   const total = accuracy.mape_total ?? null;
   const mase = accuracy.mase ?? null;
+  // WHEN it was measured. "Averaged over 5 of 8 periods" does not say whether
+  // those periods were last month or last year, and on a sparse series the
+  // service may slide the window off the tail to find periods it can score at
+  // all. btRecent is false exactly when it slid, which is the case that needs
+  // saying - the figure then describes a slightly older window.
+  const btFrom = accuracy.backtest_from ?? null;
+  const btTo = accuracy.backtest_to ?? null;
+  const btRecent = accuracy.backtest_is_recent;
   // Already thresholded by the service, which applies a period-aware limit
   // (6 weekly, 3 monthly, 1 annually) and returns 0 below it. Re-testing >= 6
   // here would have hidden every monthly and annual gap.
@@ -1321,7 +1329,11 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
       display: `${mape.toFixed(1)}%`,
       label: unreliable ? "MAPE (LOW CONFIDENCE)" : "FORECAST ACCURACY (MAPE)",
       sublabel: (scored != null && total)
-        ? `averaged over ${scored} of ${total} periods${mase != null ? ` - MASE ${mase.toFixed(2)}` : ""}`
+        ? `averaged over ${scored} of ${total} periods${
+            btFrom && btTo ? `, ${btFrom} to ${btTo}` : ""
+          }${btRecent === false ? " (not the latest window)" : ""}${
+            mase != null ? ` - MASE ${mase.toFixed(2)}` : ""
+          }`
         : btN
           ? `tested on ${btN} ${btNz != null ? `periods (${btNz} with sales)` : "periods"}`
           : "insufficient data",
@@ -1330,6 +1342,8 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
         ? `The training history contains ${gap} periods in a row with nothing recorded. A period with no demand and a period nobody entered anything into look the same to the model, so it learns from a drop that may never have happened. Treat this figure as provisional until the history is continuous.`
         : (scored != null && total && scored < 4)
           ? `Averaged over only ${scored} ${scored === 1 ? "period" : "periods"} - the rest of the window had no sales, and MAPE cannot score those. Too few points to call it an accuracy.`
+          : btRecent === false
+            ? `Measured on ${btFrom} to ${btTo}, which is not the most recent window. The latest periods had too little demand to score, so the test window slid back to find some. The figure is real, but it describes a slightly older stretch than the forecast beside it.`
           : unreliable
             ? isHighVolatility
               ? "MAPE exceeds 300% because sales are sparse and spike-driven - the model cannot reliably predict the exact timing of individual orders. Use the forecast as a directional trend guide, not a precise estimate."
