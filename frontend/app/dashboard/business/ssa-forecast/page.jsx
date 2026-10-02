@@ -3202,18 +3202,54 @@ export default function SSAForecastPage() {
                 </span>
               </div>
             )}
-            {(result?.accuracy?.training_gap ?? 0) > 0 && (
-              <div className="ssa-warning-banner">
-                <span style={{ display: "inline-flex", flexShrink: 0, color: "var(--st-amber-fg)" }}>{ICONS.warn}</span>
-                <span>
-                  <strong style={{ color: "var(--st-amber-fg)" }}>Part of the history is blank -</strong>{" "}
-                  {result.accuracy.training_gap} periods in a row have nothing recorded. The forecast cannot
-                  tell those apart from periods with no demand, so it learns from a drop that may
-                  never have happened. Treat the accuracy figure as provisional until the history
-                  runs without a break.
-                </span>
-              </div>
-            )}
+            {/* The blackout banner has two readings. If the model was able to
+                skip the blank stretch it says so, because training on a
+                different window from the one the chart draws is not something
+                to leave implicit. If it could not, it says how much more
+                trading is needed before it can - the figure that turns "wait"
+                into a number. */}
+            {(() => {
+              const tw = result?.data_quality?.training_window;
+              if (tw?.mode === "post-gap") {
+                return (
+                  <div className="ssa-warning-banner">
+                    <span style={{ display: "inline-flex", flexShrink: 0, color: "var(--st-blue-fg)" }}>{ICONS.warn}</span>
+                    <span>
+                      <strong style={{ color: "var(--st-blue-fg)" }}>Trained on recent trading only -</strong>{" "}
+                      the history contains {tw.gap_periods} periods in a row with nothing recorded, so the
+                      model was fitted on the {result?.data_quality?.training_periods} periods since{" "}
+                      <strong style={{ color: "var(--white)" }}>{formatDateLabel(tw.from, submittedConfig?.period?.type)}</strong>{" "}
+                      and the {tw.dropped_periods} periods before that were left out. The chart still shows
+                      the whole history.
+                    </span>
+                  </div>
+                );
+              }
+              if ((result?.accuracy?.training_gap ?? 0) > 0 || (tw?.gap_periods ?? 0) > 0) {
+                const have = tw?.post_gap_periods;
+                const need = tw?.post_gap_needed;
+                return (
+                  <div className="ssa-warning-banner">
+                    <span style={{ display: "inline-flex", flexShrink: 0, color: "var(--st-amber-fg)" }}>{ICONS.warn}</span>
+                    <span>
+                      <strong style={{ color: "var(--st-amber-fg)" }}>Part of the history is blank -</strong>{" "}
+                      {tw?.gap_periods || result.accuracy.training_gap} periods in a row have nothing recorded. The forecast cannot
+                      tell those apart from periods with no demand, so it learns from a drop that may
+                      never have happened. Treat the accuracy figure as provisional until the history
+                      runs without a break.
+                      {have != null && need != null && (
+                        <>
+                          {" "}There are <strong style={{ color: "var(--white)" }}>{have} of the {need} periods</strong>{" "}
+                          needed to train on the recent stretch alone; at that point the model drops the
+                          blank run by itself.
+                        </>
+                      )}
+                    </span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
             {/* Only the two states with nothing to forecast get a banner. The
                 ordinary case - how fast it sells, how it was estimated, and
                 which sales it was counted from - is read off the Demand

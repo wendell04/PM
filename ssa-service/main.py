@@ -413,6 +413,53 @@ async def forecast(req: ForecastRequest):
                 if last_nz < len(vals) - 1:
                     df = df.iloc[:last_nz + 1].reset_index(drop=True)
 
+        # ── Train after a recording blackout, once there is enough after it ──
+        # A long run of zeros has two possible meanings and the series cannot
+        # tell them apart: the shop traded nothing, or nobody entered anything.
+        # This system has one of the second kind - roughly 32 weeks before it was
+        # in real use - and training across it is what makes the forecast read
+        # the return to activity as a steep climb worth extrapolating.
+        #
+        # So when a blackout is long enough to be a recording gap rather than a
+        # quiet patch, and the data AFTER it can support a model on its own, the
+        # blackout and everything before it are dropped. The threshold is the
+        # same min_data the endpoint already requires, so this never trades a
+        # trustworthy long series for an untrainable short one. Both counts are
+        # reported, because silently changing what the model was trained on is
+        # exactly the kind of thing this service has been corrected for.
+        # Sales only. On a stock or demand series a long run of zeros is REAL -
+        # a material simply not consumed for eight weeks - and is the signal the
+        # intermittent-demand handling exists to read. Dropping the history
+        # before it would throw away exactly what Croston needs. The same reason
+        # the floor and the trailing-zero trim are sales-only.
+        training_window = {"mode": "full", "dropped_periods": 0, "gap_periods": 0}
+        _gl = {"weekly": 6, "monthly": 3, "annually": 1}.get(forecast_type, 6)
+        if not is_sparse and len(df) > 0:
+            _v = df["Value"].values
+            _run = _best = _best_end = 0
+            for _i, _x in enumerate(_v):
+                _run = _run + 1 if _x == 0 else 0
+                if _run > _best:
+                    _best, _best_end = _run, _i
+            if _best >= _gl:
+                _after = len(_v) - (_best_end + 1)
+                if _after >= min_data:
+                    df = df.iloc[_best_end + 1:].reset_index(drop=True)
+                    training_window = {
+                        "mode": "post-gap",
+                        "dropped_periods": int(_best_end + 1),
+                        "gap_periods": int(_best),
+                        "from": df["Date"].iloc[0].strftime("%Y-%m-%d"),
+                    }
+                else:
+                    training_window = {
+                        "mode": "full",
+                        "dropped_periods": 0,
+                        "gap_periods": int(_best),
+                        "post_gap_periods": int(_after),
+                        "post_gap_needed": int(min_data),
+                    }
+
         # ── Floor zero periods for SSA training stability (sales only) ───────
         # Zero/near-zero periods use peak/4 as a reasonable baseline instead
         # of leaving them at zero (which destabilises SSA) or using tiny noise
@@ -1052,6 +1099,9 @@ async def forecast(req: ForecastRequest):
                 "training_periods":  training_periods,
                 "is_low_confidence": training_periods < 5,
                 "trim_warning":      trim_warning,
+                # Which stretch the model was actually fitted on, and when a
+                # blackout was found but not yet escapable, how far off that is.
+                "training_window":   training_window,
             },
             "accuracy":          accuracy,
             "backtest_series":   backtest_series,
