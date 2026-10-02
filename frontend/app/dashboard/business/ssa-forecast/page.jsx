@@ -555,19 +555,6 @@ const pageStyles = `
     font-size: 14px;
     margin-top: 16px;
   }
-  .ssa-info-banner {
-    background: rgba(212,168,67,0.06);
-    border: 1px solid rgba(212,168,67,0.2);
-    border-radius: 6px;
-    padding: 16px 20px;
-    margin-bottom: 24px;
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    font-size: 14px;
-    color: var(--gray);
-    line-height: 1.6;
-  }
   .ssa-warning-banner {
     background: rgba(251,191,36,0.06);
     border: 1px solid rgba(251,191,36,0.25);
@@ -1050,9 +1037,23 @@ function getISOWeekParts(date) {
   };
 }
 
-// Future period-start dates from the current period forward (W-MON / month-start
-// / year-start), matching the backend's date conventions. Used by the inventory
-// fallback projection when there isn't enough history to run SSA.
+/**
+ * The next `count` period-start dates, all strictly after today (W-MON /
+ * month-start / year-start, matching the backend's date conventions). Used by
+ * the inventory fallback projection when there isn't enough history for SSA.
+ *
+ * It used to start at the CURRENT period, and the start of the period containing
+ * today is by definition on or before today - Monday of this week, the 1st of
+ * this month, 1 January of this year. Both consumers of a forecast skip anything
+ * dated on or before today (the depletion chart and the stockout-date effect),
+ * because a line cannot be drawn backwards from the "today" boundary. So the
+ * first period generated here was ALWAYS discarded: every look-ahead silently
+ * lost a period, and a look-ahead of 1 produced no line and no stockout alert at
+ * all - which looked like the forecast simply not running. Measured at 9 of 9
+ * period/count combinations losing at least one period.
+ *
+ * Starting one period on means the count asked for is the count drawn.
+ */
 function genFuturePeriods(count, periodType) {
   // Anchored to the shop's calendar day, then stepped as a date string - the same
   // discipline as the other period walkers here. Reading now.getUTCDate() instead
@@ -1068,12 +1069,17 @@ function genFuturePeriods(count, periodType) {
   } else {
     cur = new Date(`${today.slice(0, 4)}-01-01T00:00:00Z`);
   }
-  const out = [];
-  for (let i = 0; i < count; i++) {
-    out.push(cur.toISOString().slice(0, 10));
+  // Step off the current period, which has already begun.
+  const step = () => {
     if (periodType === "weekly") cur.setUTCDate(cur.getUTCDate() + 7);
     else if (periodType === "monthly") cur.setUTCMonth(cur.getUTCMonth() + 1);
     else cur.setUTCFullYear(cur.getUTCFullYear() + 1);
+  };
+  step();
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    out.push(cur.toISOString().slice(0, 10));
+    step();
   }
   return out;
 }
@@ -3785,26 +3791,6 @@ export default function SSAForecastPage() {
               )}
             </div>
 
-            {parseInt(forecastCount, 10) > 0 && !isInvMode && (
-              <div className="ssa-info-banner">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="16" x2="12" y2="12" />
-                  <line x1="12" y1="8" x2="12.01" y2="8" />
-                </svg>
-                <span>
-                  SSA decomposed the series into trend, seasonality, and noise. Shaded bands show {"\u00b11.96\u03c3"} confidence interval.
-                  {result?.auto_L && (
-                    <>
-                      {" "}Window <strong style={{ color: "var(--gold)" }}>L={result.auto_L.L_used}</strong> selected automatically
-                      {result.auto_L.period_detected
-                        ? <> \u00b7 period detected: <strong style={{ color: "var(--white)" }}>{result.auto_L.period_detected} steps</strong>.</>
-                        : " (no dominant period detected; fallback heuristic used)."}
-                    </>
-                  )}
-                </span>
-              </div>
-            )}
             {isInvMode && !(parseInt(forecastCount, 10) > 0) && (
               <p style={{ fontSize: "13px", color: "var(--gray)", marginTop: "12px", marginBottom: "24px", lineHeight: 1.5 }}>
                 Showing recorded stock up to today. Enter a{" "}
