@@ -132,8 +132,16 @@ function originLabel() {
 }
 
 function describeForecastError(err, ssaUrl) {
-  if (err?.name === "AbortError") {
-    return `The forecast service did not answer in time. Check that it is running at ${ssaUrl}.`;
+  // Both spellings, because the two paths here throw different things. A raw
+  // fetch aborted by a caller's own AbortController rejects with a real
+  // AbortError, which is what /api/forecast used to do. fetchWithTimeout catches
+  // that one and rethrows a PLAIN Error reading "Request timed out after
+  // 90000ms" - so now that these calls go through it, a name check alone would
+  // match nothing and a timed-out forecast would fall to the bottom of this
+  // function and show the reader that raw string. describeAuthError has always
+  // tested both.
+  if (err?.name === "AbortError" || /timed out after/i.test(err?.message ?? "")) {
+    return `The forecast service at ${ssaUrl} did not answer in time. It is hosted separately and sleeps when idle, so the first request after a quiet spell has to wake it - that can take up to a minute. Run the forecast again; if it times out twice, the service is genuinely down.`;
   }
   // A network-level failure: service down, wrong host, or blocked by CORS.
   // Fetch reports all three identically, so the advice has to fit the host.
@@ -160,6 +168,25 @@ function describeForecastError(err, ssaUrl) {
       : `Could not reach the forecast service at ${ssaUrl}. Either it is not responding, or this site's address is not on its allowed list - check the service is up and that SSA_ALLOWED_ORIGINS includes ${originLabel()}.`;
   }
   return err?.message || "An unexpected error occurred.";
+}
+
+/**
+ * A POST to the forecast service, with a bound on how long it may hang.
+ *
+ * Of the four SSA calls on this page only /api/forecast had a bound - its own
+ * AbortController at 60s. The three segment calls used bare fetch(), which has
+ * no timeout at all: a host that accepts the connection and then never answers
+ * left the page on its spinner with no error and nothing to read. The service is
+ * hosted separately (Railway) and sleeps when idle, so the first request after a
+ * quiet spell pays a cold start, and that is exactly the case they handled worst.
+ *
+ * 90s, not the 30s default: a warm forecast over a thousand rows answers in well
+ * under a second, so this is sized for waking the host, not for computing. POSTs
+ * are never retried by fetchWithTimeout, so a request that did get through is not
+ * sent twice.
+ */
+function ssaFetch(url, options, timeout = 90000) {
+  return fetchWithTimeout(url, options, timeout);
 }
 
 /**
@@ -1707,9 +1734,12 @@ export default function SSAForecastPage() {
         return;
       }
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
-      const ssaRes = await fetch(`${SSA_API_URL}/api/forecast`, {
+      // ssaFetch owns the timeout now. This call used to run its own
+      // AbortController at 60s - the only one of the four SSA calls that had a
+      // bound at all - and fetchWithTimeout replaces a caller's signal with its
+      // own, so keeping it would have left a timer aborting a signal nothing
+      // listens to.
+      const ssaRes = await ssaFetch(`${SSA_API_URL}/api/forecast`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1724,9 +1754,7 @@ export default function SSAForecastPage() {
           // the level display.
           data_type: dataSource === "inventory_stock" ? "demand" : "sales",
         }),
-        signal: controller.signal,
       });
-      clearTimeout(timeoutId);
 
       if (!ssaRes.ok) {
         const err = await ssaRes.json().catch(() => ({}));
@@ -1812,7 +1840,7 @@ export default function SSAForecastPage() {
         setRfmError("No sales data found for customer segmentation.");
         return;
       }
-      const ssaRes = await fetch(`${SSA_API_URL}/api/customer-segments`, {
+      const ssaRes = await ssaFetch(`${SSA_API_URL}/api/customer-segments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sales }),
@@ -1854,7 +1882,7 @@ export default function SSAForecastPage() {
         const r = taxonomy?.saleResolution?.[s.productName];
         return r?.productName ? { ...s, productName: r.productName } : s;
       });
-      const ssaRes = await fetch(`${SSA_API_URL}/api/service-segments`, {
+      const ssaRes = await ssaFetch(`${SSA_API_URL}/api/service-segments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sales: rolledUp }),
@@ -1890,7 +1918,7 @@ export default function SSAForecastPage() {
         return r?.productName ? { ...s, productName: r.productName } : s;
       });
       const sRes = sales.length > 0
-        ? await fetch(`${SSA_API_URL}/api/service-segments`, {
+        ? await ssaFetch(`${SSA_API_URL}/api/service-segments`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sales: rolledUp }),
