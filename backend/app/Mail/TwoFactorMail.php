@@ -35,7 +35,11 @@ class TwoFactorMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your verification code - Personalize Me Prints',
+            // The code goes in the subject: every code email used to share one subject, so Gmail
+            // stacked them in a single thread and the older, already-replaced code was the one
+            // people read. A distinct subject keeps each email separate and shows the code in
+            // the inbox list.
+            subject: $this->otpCode . ' is your Personalize Me Prints sign-in code',
         );
     }
 

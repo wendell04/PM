@@ -25,7 +25,8 @@
             </p>
             <p style="color: #444444; font-size: 14px; line-height: 1.7; margin: 0 0 16px;">
                 Use the verification code below to complete your login.
-                This code expires in {{ $expiryMinutes }} minutes.
+                This code expires in {{ $expiryMinutes }} minutes. Only the newest code works:
+                asking for a new one cancels any code sent before it.
             </p>
 
             {{-- OTP code box --}}
