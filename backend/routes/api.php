@@ -375,7 +375,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/sales/summary',           [SaleController::class, 'summary']);
     Route::get('/admin/reports/sales',           [ReportController::class, 'sales']);
     Route::get('/admin/reports/inventory',       [ReportController::class, 'inventory']);
-    Route::get('/admin/reports/{type}/pdf',      [ReportController::class, 'pdf'])->where('type', 'sales|inventory')->middleware('throttle:20,1');
+    Route::get('/admin/reports/orders',          [ReportController::class, 'orders']);
+    Route::get('/admin/reports/transactions',    [ReportController::class, 'transactions']);
+    Route::get('/admin/reports/{type}/pdf',      [ReportController::class, 'pdf'])->where('type', 'sales|inventory|orders|transactions')->middleware('throttle:20,1');
     Route::get('/admin/sales/top-products',      [SaleController::class, 'topProducts']);
     // Sales made outside the system: recorded by hand or imported. Declared before /admin/sales/{id}
     // so "manual" is never read as a sale id. The controller checks sales.view / sales.record.

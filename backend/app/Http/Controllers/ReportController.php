@@ -76,23 +76,25 @@ class ReportController extends Controller
     }
 
     /**
-     * GET /api/admin/reports/{type}/pdf - the same report as a PDF file (sales takes from/to).
+     * GET /api/admin/reports/{type}/pdf - the same report as a PDF file (sales, orders and
+     * transactions take from/to; inventory is a snapshot).
      *
      * The page only had Print, which leaves it to the browser; this is a real download, laid out for
      * A4 by dompdf the way the receipt is.
      */
     public function pdf(Request $request, string $type)
     {
-        if (!in_array($type, ['sales', 'inventory'], true)) return $this->notFoundResponse('Report');
-        $res = $type === 'sales' ? $this->sales($request) : $this->inventory($request);
+        $titles = ['sales' => 'Sales report', 'inventory' => 'Inventory report', 'orders' => 'Order records report', 'transactions' => 'Transaction report'];
+        if (!isset($titles[$type])) return $this->notFoundResponse('Report');
+        $res = $this->{$type}($request);
         if ($res->getStatusCode() !== 200) return $res;
         $d = json_decode($res->getContent(), true)['data'] ?? [];
 
         $user = $request->user();
         $view = [
             'd'           => $d,
-            'title'       => $type === 'sales' ? 'Sales report' : 'Inventory report',
-            'subtitle'    => $type === 'sales' ? ($d['range']['label'] ?? '')
+            'title'       => $titles[$type],
+            'subtitle'    => $type !== 'inventory' ? ($d['range']['label'] ?? '')
                 : ('Stock as of ' . (!empty($d['asOf']) ? CarbonImmutable::parse($d['asOf'], self::TZ)->format('M j, Y g:i A') : 'now')),
             'generatedAt' => CarbonImmutable::now(self::TZ)->format('M j, Y g:i A'),
             'generatedBy' => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: 'staff',
@@ -104,7 +106,8 @@ class ReportController extends Controller
             $options->set('defaultFont', 'DejaVu Sans');   // has the peso sign
             $dompdf = new \Dompdf\Dompdf($options);
             $dompdf->loadHtml(view('reports.pdf-' . $type, $view)->render(), 'UTF-8');
-            $dompdf->setPaper('A4', 'portrait');
+            // The two record reports are wide tables (nine and seven columns); portrait wrapped every row.
+            $dompdf->setPaper('A4', in_array($type, ['orders', 'transactions'], true) ? 'landscape' : 'portrait');
             $dompdf->render();
             // "Page 1 of 2" on every page, bottom right, so a printed copy can be put back in order.
             $canvas = $dompdf->getCanvas();
@@ -113,9 +116,9 @@ class ReportController extends Controller
         } catch (\Throwable $e) {
             return $this->serverErrorResponse($e, 'Could not make the PDF.');
         }
-        $name = $type === 'sales'
-            ? 'Sales-report-' . ($d['range']['from'] ?? '') . '-to-' . ($d['range']['to'] ?? '') . '.pdf'
-            : 'Inventory-report-' . CarbonImmutable::now(self::TZ)->toDateString() . '.pdf';
+        $name = $type === 'inventory'
+            ? 'Inventory-report-' . CarbonImmutable::now(self::TZ)->toDateString() . '.pdf'
+            : str_replace(' ', '-', ucfirst($titles[$type])) . '-' . ($d['range']['from'] ?? '') . '-to-' . ($d['range']['to'] ?? '') . '.pdf';
         return response($dompdf->output(), 200, [
             'Content-Type'        => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="' . $name . '"',
@@ -220,7 +223,228 @@ class ReportController extends Controller
         }
     }
 
+    /**
+     * GET /api/admin/reports/orders?from=YYYY-MM-DD&to=YYYY-MM-DD
+     *
+     * Order records: every order PLACED in the range (Manila dates), whatever happened to it since.
+     * A checkout that was never paid is not an order (checkoutPending / voidedCheckout) and is left
+     * out, as everywhere else. Paid and balance are read the way Home reads them, so the two agree.
+     */
+    public function orders(Request $request)
+    {
+        try {
+            if (!$this->hasPermission($request, 'reports')) {
+                return $this->unauthorizedResponse();
+            }
+            [$from, $to] = $this->range($request);
+
+            $rows = [];
+            $totals = ['orders' => 0, 'value' => 0.0, 'paid' => 0.0, 'balance' => 0.0, 'open' => 0, 'delivered' => 0, 'cancelled' => 0];
+            $byStatus = [];
+            foreach (\App\Models\Order::where('checkoutPending', '!=', true)->where('voidedCheckout', '!=', true)->get() as $o) {
+                $placed = self::when($o->createdAt ?? $o->created_at ?? null);
+                if (!$placed || $placed < $from || $placed > $to) continue;
+
+                $code   = \App\Support\OrderStatus::normalize((string) ($o->orderStatus ?? $o->status ?? 'pending')) ?: 'pending';
+                $closed = in_array($code, ['cancelled', 'returned'], true);
+                $total  = (float) ($o->totalAmount ?? 0);
+                $paid   = self::orderPaid($o);
+                $bal    = $closed ? 0.0 : max(0.0, $total - $paid);
+                $items  = is_array($o->items) ? $o->items : [];
+                $first  = $items[0] ?? [];
+                $summary = trim(($first['productName'] ?? $first['name'] ?? 'Item') . ' x' . (int) ($first['quantity'] ?? $first['qty'] ?? 1))
+                    . (count($items) > 1 ? ' +' . (count($items) - 1) . ' more' : '');
+
+                $rows[] = [
+                    'id'       => (string) $o->_id,
+                    'ref'      => self::orderRef($o),
+                    'placed'   => $placed->format('M j, Y g:i A'),
+                    'placedAt' => $placed->toIso8601String(),
+                    'customer' => self::customerName($o),
+                    'channel'  => self::channelLabel($o),
+                    'items'    => $summary,
+                    'total'    => round($total, 2),
+                    'paid'     => round($paid, 2),
+                    'balance'  => round($bal, 2),
+                    // From what was actually paid: the stored paymentStatus tracks the goods only, so an
+                    // order whose design fee is paid read "Unpaid" beside a paid amount.
+                    'payment'  => $closed ? '-' : ($total > 0 && $paid >= $total - 0.005 ? 'Paid' : ($paid > 0 ? 'Partial' : 'Unpaid')),
+                    'status'   => \App\Support\OrderStatus::label($code),
+                ];
+
+                $label = \App\Support\OrderStatus::label($code);
+                $byStatus[$label] = $byStatus[$label] ?? ['status' => $label, 'orders' => 0, 'value' => 0.0];
+                $byStatus[$label]['orders']++;
+                $byStatus[$label]['value'] += $total;
+
+                $totals['orders']++;
+                if ($closed) { if ($code === 'cancelled') $totals['cancelled']++; continue; }
+                $totals['value']   += $total;
+                $totals['paid']    += $paid;
+                $totals['balance'] += $bal;
+                $code === 'delivered' ? $totals['delivered']++ : $totals['open']++;
+            }
+            usort($rows, fn ($a, $b) => strcmp($b['placedAt'], $a['placedAt']));
+            $statusList = array_values($byStatus);
+            usort($statusList, fn ($a, $b) => $b['orders'] <=> $a['orders']);
+
+            return $this->successResponse('Order records report.', [
+                'range'    => ['from' => $from->toDateString(), 'to' => $to->toDateString(), 'label' => $this->rangeLabel($from, $to)],
+                'totals'   => array_merge($totals, [
+                    'value' => round($totals['value'], 2), 'paid' => round($totals['paid'], 2), 'balance' => round($totals['balance'], 2),
+                ]),
+                'byStatus' => array_map(fn ($s) => array_merge($s, ['value' => round($s['value'], 2)]), $statusList),
+                'rows'     => $rows,
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not build the order records report.');
+        }
+    }
+
+    /**
+     * GET /api/admin/reports/transactions?from=YYYY-MM-DD&to=YYYY-MM-DD
+     *
+     * Every peso that moved in the range, by the day it moved: payments on orders (downpayment,
+     * balance, design fee), delivery fees, and refunds paid back. Unlike Home's "collected", payments
+     * on orders that were later cancelled are listed - that money did come in - and the refund that
+     * returned it is listed against it, so the net is what the shop actually kept.
+     */
+    public function transactions(Request $request)
+    {
+        try {
+            if (!$this->hasPermission($request, 'reports')) {
+                return $this->unauthorizedResponse();
+            }
+            [$from, $to] = $this->range($request);
+
+            $rows = [];
+            $add = function ($o, $when, string $kind, $method, float $amount, string $by, string $note = '') use (&$rows, $from, $to) {
+                $at = self::when($when);
+                if (!$at || $at < $from || $at > $to || abs($amount) < 0.005) return;
+                $rows[] = [
+                    'at'       => $at->toIso8601String(),
+                    'date'     => $at->format('M j, Y g:i A'),
+                    'ref'      => self::orderRef($o),
+                    'orderId'  => (string) $o->_id,
+                    'customer' => self::customerName($o),
+                    'kind'     => $kind,
+                    'method'   => self::methodLabel($method),
+                    'by'       => $by,
+                    'note'     => mb_substr(trim($note), 0, 80),
+                    'amount'   => round($amount, 2),
+                ];
+            };
+            $kinds = ['downpayment' => 'Downpayment', 'balance' => 'Balance', 'design_fee' => 'Design fee', 'payment' => 'Payment', '' => 'Payment'];
+
+            foreach (\App\Models\Order::where('checkoutPending', '!=', true)->where('voidedCheckout', '!=', true)->get() as $o) {
+                foreach ((is_array($o->paymentHistory) ? $o->paymentHistory : []) as $h) {
+                    $amt = (float) ($h['amount'] ?? 0);
+                    // Same rule as Home: a voided line and its minus line are money that never came in.
+                    if ($amt <= 0 || !empty($h['voided']) || ($h['type'] ?? '') === 'void') continue;
+                    $by = !empty($h['recordedBy']) ? 'Recorded by staff'
+                        : (in_array(strtolower((string) ($h['method'] ?? '')), ['gcash', 'paymaya', 'maya', 'card'], true) ? 'Online (PayMongo)' : 'Recorded');
+                    $add($o, $h['paidAt'] ?? $h['recordedAt'] ?? $h['createdAt'] ?? $o->createdAt, $kinds[(string) ($h['type'] ?? '')] ?? ucfirst(str_replace('_', ' ', (string) $h['type'])),
+                        $h['method'] ?? null, $amt, $by, (string) ($h['note'] ?? ''));
+                }
+                // The delivery fee is paid on its own and kept in its own fields, not in the history.
+                if ((float) ($o->courierFeePaidAmount ?? 0) > 0 && !empty($o->courierFeePaidAt)) {
+                    $add($o, $o->courierFeePaidAt, 'Delivery fee', $o->courierFeePaidMethod ?? null, (float) $o->courierFeePaidAmount,
+                        $o->courierFeePaymentRef ? 'Online (PayMongo)' : 'Recorded by staff', $o->courierFeePaymentRef ? 'Ref ' . $o->courierFeePaymentRef : '');
+                }
+                // Only refunds actually paid back. An owed or waived refund moved no money.
+                foreach ((is_array($o->refunds) ? $o->refunds : []) as $r) {
+                    if (($r['status'] ?? 'owed') !== 'paid') continue;
+                    $add($o, $r['paidAt'] ?? $r['recordedAt'] ?? null, 'Refund', $r['paidVia'] ?? null, -abs((float) ($r['amount'] ?? 0)),
+                        'Recorded by staff', (string) ($r['reason'] ?? ''));
+                }
+            }
+            usort($rows, fn ($a, $b) => strcmp($b['at'], $a['at']));
+
+            $in = 0.0; $out = 0.0; $byMethod = []; $byKind = [];
+            foreach ($rows as $r) {
+                $r['amount'] >= 0 ? $in += $r['amount'] : $out += -$r['amount'];
+                $byMethod[$r['method']] = $byMethod[$r['method']] ?? ['method' => $r['method'], 'count' => 0, 'amount' => 0.0];
+                $byMethod[$r['method']]['count']++;
+                $byMethod[$r['method']]['amount'] += $r['amount'];
+                $byKind[$r['kind']] = $byKind[$r['kind']] ?? ['kind' => $r['kind'], 'count' => 0, 'amount' => 0.0];
+                $byKind[$r['kind']]['count']++;
+                $byKind[$r['kind']]['amount'] += $r['amount'];
+            }
+            $sortAmt = function (array $list) { $l = array_values($list); usort($l, fn ($a, $b) => abs($b['amount']) <=> abs($a['amount']));
+                return array_map(fn ($x) => array_merge($x, ['amount' => round($x['amount'], 2)]), $l); };
+
+            return $this->successResponse('Transaction report.', [
+                'range'    => ['from' => $from->toDateString(), 'to' => $to->toDateString(), 'label' => $this->rangeLabel($from, $to)],
+                'totals'   => ['count' => count($rows), 'received' => round($in, 2), 'refunded' => round($out, 2), 'net' => round($in - $out, 2)],
+                'byMethod' => $sortAmt($byMethod),
+                'byKind'   => $sortAmt($byKind),
+                'rows'     => $rows,
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not build the transaction report.');
+        }
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────────
+
+    /** A stored date (BSON date, ISO string or Carbon) as a Manila moment, or null. */
+    private static function when($v): ?CarbonImmutable
+    {
+        if (!$v) return null;
+        try {
+            if ($v instanceof \MongoDB\BSON\UTCDateTime) $v = $v->toDateTime();
+            return CarbonImmutable::parse($v)->setTimezone(self::TZ);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /** The reference the shop and the customer see, e.g. ORD-96079BA6. */
+    private static function orderRef($o): string
+    {
+        return 'ORD-' . strtoupper(substr((string) $o->_id, -8));
+    }
+
+    private static function customerName($o): string
+    {
+        $snap = is_array($o->userSnapshot) ? $o->userSnapshot : [];
+        $addr = is_array($o->deliveryAddress) ? $o->deliveryAddress : [];
+        return trim((string) ($snap['name'] ?? $addr['name'] ?? $addr['fullName'] ?? '')) ?: 'Walk-in customer';
+    }
+
+    private static function channelLabel($o): string
+    {
+        return match (strtolower((string) ($o->orderSource ?? ''))) {
+            'pos', 'walk-in', 'walkin', 'counter' => 'Counter',
+            'quote', 'quotation'                  => 'Quotation',
+            default                               => 'Online',
+        };
+    }
+
+    private static function methodLabel($m): string
+    {
+        return match (strtolower((string) $m)) {
+            'gcash'           => 'GCash',
+            'paymaya', 'maya' => 'Maya',
+            'card'            => 'Card',
+            'cash'            => 'Cash',
+            'bank', 'bank_transfer' => 'Bank transfer',
+            ''                => 'Not recorded',
+            default           => ucfirst((string) $m),
+        };
+    }
+
+    /** What the customer has paid toward the order, read the way Home reads it. */
+    private static function orderPaid($o): float
+    {
+        $sum = 0.0;
+        foreach ((is_array($o->paymentHistory) ? $o->paymentHistory : []) as $h) {
+            $a = (float) ($h['amount'] ?? 0);
+            if ($a <= 0 || !empty($h['voided']) || ($h['type'] ?? '') === 'void') continue;
+            $sum += $a;
+        }
+        return max((float) ($o->downPayment ?? 0), $sum);
+    }
 
     /** The requested range as Manila-local day bounds; defaults to this month. */
     private function range(Request $request): array

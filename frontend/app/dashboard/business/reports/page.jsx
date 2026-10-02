@@ -1,11 +1,13 @@
 'use client';
 
-// Reports - three questions a print shop asks, answered so the chart, the table under it and the
+// Reports - the questions a print shop asks, answered so the chart, the table under it and the
 // CSV never disagree.
 //
-//   Sales     what was sold in a period, against the period before it
-//   Inventory what the shelf is worth right now, what is short, what left it last month
-//   Demand    what the forecast expects (Wendell's SSA; empty until the service answers)
+//   Sales        what was sold in a period, against the period before it
+//   Orders       every order placed in a period: status, paid, still owed
+//   Transactions every peso that moved in a period: payments, delivery fees, refunds
+//   Inventory    what the shelf is worth right now, what is short, what left it last month
+//   Demand       what the forecast expects (Wendell's SSA; empty until the service answers)
 //
 // The rules that make it readable, which the old page broke:
 //  - The date range is the one control, in one row, above everything. Every number below is
@@ -509,6 +511,155 @@ function InventoryReport({ token }) {
   );
 }
 
+// ── Orders and Transactions ───────────────────────────────────────────────────
+// The two record reports the paper names (Order Records, Transactions): one row per order placed,
+// and one row per peso that moved. Same date control, same export and PDF as Sales.
+const RECORDS = {
+  orders: {
+    title: 'Order records',
+    sub: (d) => `${d.range.label}. Orders by the date they were placed; a checkout that was never paid is not an order. Delivery fees are in Transactions.`,
+    kpis: (t, isPhone) => [
+      { key: 'n',    label: 'Orders placed', value: num(t.orders), sub: `${t.cancelled} cancelled` },
+      { key: 'val',  label: 'Order value',   value: isPhone ? pesoShort(t.value) : peso(t.value), title: peso(t.value), sub: 'cancelled left out' },
+      { key: 'paid', label: 'Paid',          value: isPhone ? pesoShort(t.paid) : peso(t.paid), title: peso(t.paid) },
+      { key: 'bal',  label: 'Balance owed',  value: isPhone ? pesoShort(t.balance) : peso(t.balance), title: peso(t.balance), color: t.balance > 0 ? 'var(--st-orange-fg)' : undefined },
+    ],
+    breakdown: { title: 'Orders by status', rows: (d) => d.byStatus, cols: [
+      { key: 'status', label: 'Status', strong: true },
+      { key: 'orders', label: 'Orders', right: true },
+      { key: 'value', label: 'Value', right: true, render: r => peso(r.value) },
+    ] },
+    cols: [
+      { key: 'ref', label: 'Order', strong: true },
+      { key: 'placed', label: 'Placed', muted: true, wide: true },
+      { key: 'customer', label: 'Customer', render: r => <>{r.customer}<div style={{ fontSize: 11, color: 'var(--gray)' }}>{r.channel}</div></> },
+      { key: 'items', label: 'Items', wide: true },
+      { key: 'total', label: 'Total', right: true, render: r => peso(r.total) },
+      { key: 'paid', label: 'Paid', right: true, wide: true, render: r => peso(r.paid) },
+      { key: 'balance', label: 'Balance', right: true, render: r => (r.balance > 0 ? peso(r.balance) : '-') },
+      { key: 'payment', label: 'Payment', wide: true },
+      { key: 'status', label: 'Status' },
+    ],
+    csv: (d) => [
+      ['Order', 'Placed', 'Customer', 'Channel', 'Items', 'Total', 'Paid', 'Balance', 'Payment', 'Status'],
+      d.rows.map(r => [r.ref, r.placed, r.customer, r.channel, r.items, r.total.toFixed(2), r.paid.toFixed(2), r.balance.toFixed(2), r.payment, r.status]),
+    ],
+    empty: 'No orders were placed in this period.',
+  },
+  transactions: {
+    title: 'Transactions',
+    sub: (d) => `${d.range.label}. Every payment by the day it was made, plus delivery fees and refunds paid back. Payments on orders later cancelled are listed, since that money did come in.`,
+    kpis: (t, isPhone) => [
+      { key: 'n',   label: 'Transactions', value: num(t.count) },
+      { key: 'in',  label: 'Received',     value: isPhone ? pesoShort(t.received) : peso(t.received), title: peso(t.received) },
+      { key: 'out', label: 'Refunded',     value: isPhone ? pesoShort(t.refunded) : peso(t.refunded), title: peso(t.refunded), color: t.refunded > 0 ? 'var(--st-red-fg)' : undefined },
+      { key: 'net', label: 'Net kept',     value: isPhone ? pesoShort(t.net) : peso(t.net), title: peso(t.net) },
+    ],
+    breakdown: { title: 'By payment method', rows: (d) => d.byMethod, cols: [
+      { key: 'method', label: 'Method', strong: true },
+      { key: 'count', label: 'Count', right: true },
+      { key: 'amount', label: 'Amount', right: true, render: r => peso(r.amount) },
+    ] },
+    breakdown2: { title: 'By type', rows: (d) => d.byKind, cols: [
+      { key: 'kind', label: 'Type', strong: true },
+      { key: 'count', label: 'Count', right: true },
+      { key: 'amount', label: 'Amount', right: true, render: r => peso(r.amount) },
+    ] },
+    cols: [
+      { key: 'date', label: 'Date', muted: true },
+      { key: 'ref', label: 'Order', strong: true },
+      { key: 'customer', label: 'Customer', wide: true },
+      { key: 'kind', label: 'Type' },
+      { key: 'method', label: 'Method' },
+      { key: 'by', label: 'Recorded', wide: true, muted: true },
+      { key: 'amount', label: 'Amount', right: true, render: r => <span style={{ color: r.amount < 0 ? 'var(--st-red-fg)' : undefined }}>{r.amount < 0 ? '-' + peso(-r.amount) : peso(r.amount)}</span> },
+    ],
+    csv: (d) => [
+      ['Date', 'Order', 'Customer', 'Type', 'Method', 'Recorded', 'Note', 'Amount'],
+      d.rows.map(r => [r.date, r.ref, r.customer, r.kind, r.method, r.by, r.note, r.amount.toFixed(2)]),
+    ],
+    empty: 'No money moved in this period.',
+  },
+};
+
+function RecordsReport({ token, type }) {
+  const cfg = RECORDS[type];
+  const mayExport = useAccess().can('reports.export');
+  const isPhone = useIsPhone();
+  const [range, setRange] = useState(() => { const [from, to] = PRESETS[0].range(); return { preset: 'this-month', from, to }; });
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [error, setError] = useState('');
+  // A year of orders is a long table; the PDF and CSV carry every row, the screen the first 100.
+  const [showAll, setShowAll] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!token || !range.from || !range.to) return;
+    setLoading(true); setError('');
+    try {
+      const qs = new URLSearchParams({ from: range.from, to: range.to });
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/reports/${type}?${qs}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }, 30000);
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.message || `Request failed (${res.status})`);
+      setData(j.data ?? j);
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  }, [token, type, range.from, range.to]);
+  useEffect(() => { load(); }, [load]);
+
+  const kpis = data ? cfg.kpis(data.totals, isPhone) : [];
+  const rows = data ? (showAll ? data.rows : data.rows.slice(0, 100)) : [];
+  const exportRows = () => { const [h, r] = cfg.csv(data); exportCSV(h, r, `${type}-${range.from}-to-${range.to}.csv`); };
+  const pdf = (mode) => downloadPdf(token, type, { from: range.from, to: range.to }, setPdfBusy, setError, mode);
+
+  return (
+    <>
+      <div className="rpt-noprint" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        <RangePicker preset={range.preset} from={range.from} to={range.to} onChange={setRange} />
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          {mayExport && (<button type="button" onClick={exportRows} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>)}
+          <button type="button" onClick={() => pdf()} disabled={!data || pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>{pdfBusy ? 'Making PDF...' : 'Download PDF'}</button>
+          <button type="button" onClick={() => pdf('print')} disabled={!data || pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
+        </div>
+      </div>
+
+      {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: 12 }}>{error}</div>}
+      {!data && !error && <div style={{ ...S.card, padding: 28, color: 'var(--gray)', fontSize: 13, textAlign: 'center' }}>Loading {cfg.title.toLowerCase()}</div>}
+
+      {data && (
+        <div style={{ opacity: loading ? 0.55 : 1, transition: 'opacity .15s' }}>
+          <div style={{ fontSize: 12.5, color: 'var(--gray)', marginBottom: 10 }}>{cfg.sub(data)}</div>
+          {isPhone ? <KpiStrip items={kpis} /> : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
+              {kpis.map(k => (
+                <div key={k.key} style={S.cardSm} title={k.title}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.4px' }}>{k.label}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: k.color, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
+                  {k.sub && <div style={{ fontSize: 11.5, marginTop: 2, color: 'var(--gray)' }}>{k.sub}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: isPhone || !cfg.breakdown2 ? '1fr' : '1fr 1fr', gap: 14 }}>
+            {[cfg.breakdown, cfg.breakdown2].filter(Boolean).map(b => (
+              <Card key={b.title} title={b.title}>
+                <Table cols={b.cols} rows={b.rows(data)} empty={cfg.empty} />
+              </Card>
+            ))}
+          </div>
+
+          <Card title={cfg.title} sub={data.rows.length > rows.length ? `Showing the newest ${rows.length} of ${data.rows.length}. The PDF and CSV have every row.` : `${data.rows.length} row${data.rows.length === 1 ? '' : 's'}, newest first.`}
+            right={data.rows.length > 100 ? <button type="button" onClick={() => setShowAll(v => !v)} style={{ ...S.btnGhost, minHeight: 32 }}>{showAll ? 'Show fewer' : 'Show all'}</button> : null}>
+            <Table cols={cfg.cols} rows={rows.map((r, i) => ({ ...r, key: (r.id || r.orderId || '') + '-' + i }))} empty={cfg.empty} />
+          </Card>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Demand ────────────────────────────────────────────────────────────────────
 function DemandReport() {
   const { can } = useAccess();
@@ -537,6 +688,8 @@ function DemandReport() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 const TABS = [
   { id: 'sales', label: 'Sales' },
+  { id: 'orders', label: 'Orders' },
+  { id: 'transactions', label: 'Transactions' },
   { id: 'inventory', label: 'Inventory' },
   { id: 'demand', label: 'Demand' },
 ];
@@ -560,6 +713,7 @@ export default function ReportsPage() {
           <TabBar tabs={TABS} active={tab} onChange={setTab} />
         </div>
         {tab === 'sales' && <SalesReport token={token} />}
+        {(tab === 'orders' || tab === 'transactions') && <RecordsReport key={tab} token={token} type={tab} />}
         {tab === 'inventory' && <InventoryReport token={token} />}
         {tab === 'demand' && <DemandReport />}
       </div>
