@@ -42,9 +42,14 @@ export default function PhoneInput({ value = '', onChange, error, defaultCountry
   const [search, setSearch]   = useState('');
   const [national, setNational] = useState('');
   const boxRef = useRef(null);
+  // The last value this field handed up. When the parent passes it straight back, the box already
+  // shows it - re-parsing it wiped any number libphonenumber could not parse yet (half typed, or
+  // not a real number), so the field cleared itself mid-typing and flickered.
+  const lastEmitted = useRef(null);
 
   // Keep local state in sync when the parent resets the form.
   useEffect(() => {
+    if (value === lastEmitted.current) return;
     if (!value) { setNational(''); return; }
     // A number saved the way people write it here - 09171234567, no country on it - cannot be
     // parsed on its own, and the box came up EMPTY with the customer's own number sitting in the
@@ -70,7 +75,9 @@ export default function PhoneInput({ value = '', onChange, error, defaultCountry
 
   const emit = (nextCountry, nextNational) => {
     const digits = (nextNational || '').replace(/\D/g, '');
-    onChange?.(digits ? `+${getCountryCallingCode(nextCountry)}${digits}` : '');
+    const out = digits ? `+${getCountryCallingCode(nextCountry)}${digits}` : '';
+    lastEmitted.current = out;
+    onChange?.(out);
   };
 
   const handleNumber = (raw) => {

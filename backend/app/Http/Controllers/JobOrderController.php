@@ -1367,7 +1367,9 @@ class JobOrderController extends Controller
                 $inv = Inventory::find($c['inventoryId'] ?? null);
                 // Spoilage destroys cost-only material too - see the QC paths above.
                 if (!$inv) continue;
-                $per = (float) ($c['qty'] ?? 0);
+                // The snapshot stores the per-unit amount as qtyPerUnit (see bomSnapshotFor); reading
+                // only 'qty' found 0 for every material, so spoilage refused with 'pick a material'.
+                $per = (float) ($c['qtyPerUnit'] ?? $c['qty'] ?? 0);
                 if ($per <= 0) continue;
 
                 $take = (int) round($per * $qty);

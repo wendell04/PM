@@ -261,6 +261,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
               value={formData.phoneNumber}
               onChange={(e164) => handleChange('phoneNumber', e164)}
               error={!!errors.phoneNumber}
+              inputStyle={{ background: 'rgba(0,0,0,0.04)' }}
             />
             {errors.phoneNumber && <span className="error-message">{errors.phoneNumber}</span>}
           </div>
