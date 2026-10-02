@@ -278,7 +278,17 @@ def _compute_last_period_value(
     dates: "pd.Series",
     forecast_type: str,
 ) -> float:
-    """Return the most meaningful 'last period' revenue value for display."""
+    """Return the most meaningful 'last period' revenue value for display.
+
+    ONLY THE ANNUAL BRANCH IS REACHED. The single caller passes the literal
+    "annually"; weekly and monthly take a trailing 7- and 30-day total anchored
+    to the most recent sale instead, computed at the call site, and the card
+    that shows it is labelled "Last 7-Day Revenue" to match. The branches below
+    for those two are dead - kept because they implement a different and
+    defensible definition ("last complete W-MON bucket", "last complete
+    calendar month") should the display ever want it, but do not read them as
+    describing what the dashboard currently shows.
+    """
     dates_dt = pd.to_datetime(dates)
     now = business_now()
 

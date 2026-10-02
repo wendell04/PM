@@ -2772,8 +2772,13 @@ export default function SSAForecastPage() {
             const firstLoad = isLoading && !result;
             const hasForecastCount = parseInt(forecastCount, 10) > 0;
             const vals = result?.historical?.values || [];
-            // last_period_value is the unfloored weekly aggregate for the last
-            // training period - meaningful for weekly forecast context.
+            // last_period_value is NOT the last training bucket. The service
+            // returns a trailing raw total anchored to the most recent sale -
+            // 7 days for weekly, 30 for monthly, the last complete calendar
+            // year for annual - which is why the card beside it is labelled
+            // "Last 7-Day Revenue" rather than "last week". Anchoring that way
+            // keeps weekly and monthly proportional and stops an old spike
+            // showing up as the current period.
             const lastVal =
               result?.last_period_value ??
               (vals.length > 0 ? vals[vals.length - 1] : null);
