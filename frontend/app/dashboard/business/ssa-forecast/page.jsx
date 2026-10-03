@@ -4083,6 +4083,17 @@ export default function SSAForecastPage() {
                   const sameWay = comparative.comparison.filter((r) => r.direction === (over ? "over" : "under")).length;
                   const unit = submittedConfig?.source === "sales_revenue" ? "₱" : "";
                   const fmt = (v) => `${unit}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+                  // NOT metrics.bias_pct. That is the mean of each period's own
+                  // percentage error, which a single quiet period can dominate -
+                  // one week 50 actual against 180 forecast swamps a busy week
+                  // 9,000 against 8,000. It can therefore point the opposite way
+                  // from bias, which is the mean peso difference, and the sentence
+                  // then read "ran 435 low (124% of actual)". Measuring the same
+                  // bias against a typical period keeps the two halves agreeing by
+                  // construction.
+                  const meanActual = comparative.comparison.reduce((s, r) => s + r.actual, 0)
+                    / Math.max(1, comparative.comparison.length);
+                  const biasPct = meanActual > 0 ? (m.bias / meanActual) * 100 : null;
                   return (
                     <>
                       <p style={{ fontSize: "14px", color: "var(--gray)", margin: "0 0 16px", lineHeight: 1.6 }}>
@@ -4090,8 +4101,8 @@ export default function SSAForecastPage() {
                         <strong style={{ color: over ? "var(--st-amber-fg)" : "var(--st-blue-fg)" }}>
                           {fmt(m.bias)} {over ? "high" : "low"}
                         </strong>
-                        {m.bias_pct != null && (
-                          <> ({Math.abs(m.bias_pct).toFixed(1)}% of actual)</>
+                        {biasPct != null && (
+                          <> ({Math.abs(biasPct).toFixed(1)}% of a typical period)</>
                         )}
                         , and missed that way in <strong style={{ color: "var(--white)" }}>{sameWay} of {comparative.total_periods}</strong>{" "}
                         periods.{" "}
