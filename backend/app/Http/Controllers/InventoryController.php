@@ -517,7 +517,14 @@ class InventoryController extends Controller
         }
     }
 
-    public function show($id)
+    // Request is a parameter, not an assumption. The permission check below was
+    // added without it, and $request was therefore undefined: PHP passed null to
+    // hasAnyPermission(), whose signature types it \Illuminate\Http\Request, and
+    // the resulting TypeError is an Error rather than an Exception - so the
+    // catch at the bottom of this method could not see it and every call
+    // answered 500. Laravel injects the type-hinted Request first and the route
+    // parameter after it, which is why $id stays second.
+    public function show(Request $request, $id)
     {
         try {
             if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view', 'jobOrders.view', 'production.view', 'products.view'])) {
@@ -535,7 +542,12 @@ class InventoryController extends Controller
         }
     }
 
-    public function history($id)
+    // Same fault as show() above, and this one took the Demand Forecast's
+    // inventory view down with it: the 500 reached the page, the page's
+    // inventory branch treats any failure as "fall back to an average demand
+    // projection", and so a dead endpoint presented itself as "not enough
+    // history yet to see a pattern" on a material holding 70 units.
+    public function history(Request $request, $id)
     {
         try {
             if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view'])) {

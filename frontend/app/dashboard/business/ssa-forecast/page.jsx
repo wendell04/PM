@@ -1847,11 +1847,24 @@ export default function SSAForecastPage() {
         setComparative(null);
       }
     } catch (err) {
-      // Inventory always degrades to an average-demand projection rather than
-      // showing an error - so the depletion view works even if SSA is down or
-      // rejected the (sparse) data.
+      // Inventory degrades to an average-demand projection rather than showing
+      // an error, so the depletion view still works when SSA is down or has
+      // refused a sparse series. That is right for a forecast failure and wrong
+      // for a failure to LOAD THE DATA: when the stock-history endpoint was
+      // answering 500 on every call, this branch turned it into "not enough
+      // history yet to see a pattern" on a material holding 70 units, and the
+      // projection silently never drew because currentStockQty stayed null.
+      //
+      // apiFetch tags its own rejections, so the two are distinguishable. Keep
+      // the fallback either way - but when the dashboard API is what failed,
+      // say so, because nothing else on the screen will.
       if (dataSource === "inventory_stock") {
         applyInvFallback(rows);
+        if (err?.service?.kind === "api") {
+          setError(
+            `Could not load this item's stock history, so the figures below are built from sales alone - the stock level, the reorder point and the run-out date are not reliable. ${describeForecastError(err, SSA_API_URL)}`,
+          );
+        }
       } else {
         setError(describeForecastError(err, SSA_API_URL));
       }
