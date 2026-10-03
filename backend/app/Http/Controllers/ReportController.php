@@ -96,6 +96,7 @@ class ReportController extends Controller
             'title'       => $titles[$type],
             'subtitle'    => $type !== 'inventory' ? ($d['range']['label'] ?? '')
                 : ('Stock as of ' . (!empty($d['asOf']) ? CarbonImmutable::parse($d['asOf'], self::TZ)->format('M j, Y g:i A') : 'now')),
+            'filtered'    => collect((array) ($d['filters'] ?? []))->map(fn ($v, $k) => ($k === 'q' ? 'search' : $k) . ': ' . $v)->implode(', '),
             'generatedAt' => CarbonImmutable::now(self::TZ)->format('M j, Y g:i A'),
             'generatedBy' => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: 'staff',
         ];
@@ -237,6 +238,7 @@ class ReportController extends Controller
                 return $this->unauthorizedResponse();
             }
             [$from, $to] = $this->range($request);
+            $filters = self::recordFilters($request);
 
             $rows = [];
             $totals = ['orders' => 0, 'value' => 0.0, 'paid' => 0.0, 'balance' => 0.0, 'open' => 0, 'delivered' => 0, 'cancelled' => 0];
@@ -255,7 +257,7 @@ class ReportController extends Controller
                 $summary = trim(($first['productName'] ?? $first['name'] ?? 'Item') . ' x' . (int) ($first['quantity'] ?? $first['qty'] ?? 1))
                     . (count($items) > 1 ? ' +' . (count($items) - 1) . ' more' : '');
 
-                $rows[] = [
+                $row = [
                     'id'       => (string) $o->_id,
                     'ref'      => self::orderRef($o),
                     'placed'   => $placed->format('M j, Y g:i A'),
@@ -271,6 +273,9 @@ class ReportController extends Controller
                     'payment'  => $closed ? '-' : ($total > 0 && $paid >= $total - 0.005 ? 'Paid' : ($paid > 0 ? 'Partial' : 'Unpaid')),
                     'status'   => \App\Support\OrderStatus::label($code),
                 ];
+                // Filtered before anything is counted, so the totals describe the rows shown.
+                if (!self::rowMatches($row, $filters, ['status', 'payment', 'channel'], ['ref', 'customer', 'items'])) continue;
+                $rows[] = $row;
 
                 $label = \App\Support\OrderStatus::label($code);
                 $byStatus[$label] = $byStatus[$label] ?? ['status' => $label, 'orders' => 0, 'value' => 0.0];
@@ -294,6 +299,7 @@ class ReportController extends Controller
                     'value' => round($totals['value'], 2), 'paid' => round($totals['paid'], 2), 'balance' => round($totals['balance'], 2),
                 ]),
                 'byStatus' => array_map(fn ($s) => array_merge($s, ['value' => round($s['value'], 2)]), $statusList),
+                'filters'  => (object) $filters,
                 'rows'     => $rows,
             ]);
         } catch (\Exception $e) {
@@ -358,6 +364,8 @@ class ReportController extends Controller
                         'Recorded by staff', (string) ($r['reason'] ?? ''));
                 }
             }
+            $filters = self::recordFilters($request);
+            $rows = array_values(array_filter($rows, fn ($r) => self::rowMatches($r, $filters, ['method', 'kind', 'by'], ['ref', 'customer', 'note'])));
             usort($rows, fn ($a, $b) => strcmp($b['at'], $a['at']));
 
             $in = 0.0; $out = 0.0; $byMethod = []; $byKind = [];
@@ -378,6 +386,7 @@ class ReportController extends Controller
                 'totals'   => ['count' => count($rows), 'received' => round($in, 2), 'refunded' => round($out, 2), 'net' => round($in - $out, 2)],
                 'byMethod' => $sortAmt($byMethod),
                 'byKind'   => $sortAmt($byKind),
+                'filters'  => (object) $filters,
                 'rows'     => $rows,
             ]);
         } catch (\Exception $e) {
@@ -386,6 +395,32 @@ class ReportController extends Controller
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────
+
+    /**
+     * The table filters on the record reports, as sent by the page and by its PDF link: exact
+     * matches on the listed columns plus a free-text search (q). Each capped, like every input.
+     */
+    private static function recordFilters(Request $request): array
+    {
+        $out = [];
+        foreach (['status', 'payment', 'channel', 'method', 'kind', 'by', 'q'] as $k) {
+            $v = trim(mb_substr((string) $request->query($k, ''), 0, 80));
+            if ($v !== '') $out[$k] = $v;
+        }
+        return $out;
+    }
+
+    private static function rowMatches(array $row, array $filters, array $exact, array $searchIn): bool
+    {
+        foreach ($exact as $k) {
+            if (isset($filters[$k]) && strcasecmp((string) ($row[$k] ?? ''), $filters[$k]) !== 0) return false;
+        }
+        if (isset($filters['q'])) {
+            $hay = mb_strtolower(implode(' ', array_map(fn ($k) => (string) ($row[$k] ?? ''), $searchIn)));
+            if (!str_contains($hay, mb_strtolower($filters['q']))) return false;
+        }
+        return true;
+    }
 
     /** A stored date (BSON date, ISO string or Carbon) as a Manila moment, or null. */
     private static function when($v): ?CarbonImmutable

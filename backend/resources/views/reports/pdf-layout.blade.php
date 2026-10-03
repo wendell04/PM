@@ -59,6 +59,7 @@
       <div class="brand">PERSONALIZE <span>ME</span> PRINTS</div>
       <h1>{{ $title }}</h1>
       <div class="period">{{ $subtitle }}</div>
+      @if(!empty($filtered))<div class="period" style="font-size:9px;color:#8a6a17;">Filtered - {{ $filtered }}</div>@endif
     </td>
     <td class="meta">Generated {{ $generatedAt }}<br>by {{ $generatedBy }}</td>
   </tr></table>

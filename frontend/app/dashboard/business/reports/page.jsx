@@ -26,7 +26,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { businessToday } from '@/lib/businessDate';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { S, TabBar } from '@/app/dashboard/business/inventory-v2/shared';
+import { S, TabBar, CustomSelect, SearchBar, PaginationBar, usePagination } from '@/app/dashboard/business/inventory-v2/shared';
 import { useIsPhone, KpiStrip, BottomSheet, pesoShort } from '@/components/dashboard/phone';
 import { useAccess } from '@/contexts/AccessContext';
 
@@ -173,6 +173,9 @@ const useChartColors = () => {
   return {
     now:  light ? '#b5861c' : '#d4a843',
     prev: light ? '#c2c2c2' : '#5c5c5c',
+    // A forecast is the same measure as sales, still to come: the gold, lightened, so the legend
+    // tells the two apart (fillOpacity left the legend swatch full gold).
+    forecast: light ? '#e2cd97' : '#7d6630',
     grid: light ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.08)',
     text: light ? '#6b6b6b' : '#9a9a9a',
   };
@@ -548,6 +551,12 @@ const RECORDS = {
       d.rows.map(r => [r.ref, r.placed, r.customer, r.channel, r.items, r.total.toFixed(2), r.paid.toFixed(2), r.balance.toFixed(2), r.payment, r.status]),
     ],
     empty: 'No orders were placed in this period.',
+    search: 'Search order, customer, item',
+    filters: [
+      { key: 'status', all: 'All statuses', options: ['Pending', 'Processing', 'In Production', 'For QC', 'Ready for Delivery', 'Out for Delivery', 'Delivered', 'Cancelled', 'Returned'] },
+      { key: 'payment', all: 'All payments', options: ['Paid', 'Partial', 'Unpaid'] },
+      { key: 'channel', all: 'All channels', options: ['Online', 'Counter', 'Quotation'] },
+    ],
   },
   transactions: {
     title: 'Transactions',
@@ -582,6 +591,12 @@ const RECORDS = {
       d.rows.map(r => [r.date, r.ref, r.customer, r.kind, r.method, r.by, r.note, r.amount.toFixed(2)]),
     ],
     empty: 'No money moved in this period.',
+    search: 'Search order, customer, note',
+    filters: [
+      { key: 'method', all: 'All methods', options: ['GCash', 'Maya', 'Card', 'Cash'] },
+      { key: 'kind', all: 'All types', options: ['Downpayment', 'Balance', 'Design fee', 'Payment', 'Delivery fee', 'Refund'] },
+      { key: 'by', all: 'Online and staff', options: ['Online (PayMongo)', 'Recorded by staff'] },
+    ],
   },
 };
 
@@ -594,32 +609,51 @@ function RecordsReport({ token, type }) {
   const [loading, setLoading] = useState(true);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [error, setError] = useState('');
-  // A year of orders is a long table; the PDF and CSV carry every row, the screen the first 100.
-  const [showAll, setShowAll] = useState(false);
+  // Table filters. The server applies them, so the tiles, the CSV and the PDF describe the same rows.
+  const [filters, setFilters] = useState({});
+  const [q, setQ] = useState('');
+  const [qLive, setQLive] = useState('');
+  useEffect(() => { const t = setTimeout(() => setQ(qLive.trim()), 350); return () => clearTimeout(t); }, [qLive]);
+  const params = useMemo(() => {
+    const p = { from: range.from, to: range.to };
+    Object.entries(filters).forEach(([k, v]) => { if (v) p[k] = v; });
+    if (q) p.q = q;
+    return p;
+  }, [range.from, range.to, filters, q]);
+  const filtered = !!q || Object.values(filters).some(Boolean);
 
   const load = useCallback(async () => {
     if (!token || !range.from || !range.to) return;
     setLoading(true); setError('');
     try {
-      const qs = new URLSearchParams({ from: range.from, to: range.to });
+      const qs = new URLSearchParams(params);
       const res = await fetchWithTimeout(`${API_URL}/api/admin/reports/${type}?${qs}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }, 30000);
       const j = await res.json();
       if (!res.ok) throw new Error(j.message || `Request failed (${res.status})`);
       setData(j.data ?? j);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
-  }, [token, type, range.from, range.to]);
+  }, [token, type, params]);
   useEffect(() => { load(); }, [load]);
 
   const kpis = data ? cfg.kpis(data.totals, isPhone) : [];
-  const rows = data ? (showAll ? data.rows : data.rows.slice(0, 100)) : [];
+  // Ten rows a page, like the other tables in the dashboard; the CSV and PDF carry every row.
+  const { slice: rows, page, perPage, total, setPage, setPerPage } = usePagination(data?.rows ?? []);
   const exportRows = () => { const [h, r] = cfg.csv(data); exportCSV(h, r, `${type}-${range.from}-to-${range.to}.csv`); };
-  const pdf = (mode) => downloadPdf(token, type, { from: range.from, to: range.to }, setPdfBusy, setError, mode);
+  const pdf = (mode) => downloadPdf(token, type, params, setPdfBusy, setError, mode);
 
   return (
     <>
       <div className="rpt-noprint" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
         <RangePicker preset={range.preset} from={range.from} to={range.to} onChange={setRange} />
+        <SearchBar value={qLive} onChange={setQLive} placeholder={cfg.search} style={{ width: isPhone ? '100%' : 230 }} />
+        {cfg.filters.map(f => (
+          <CustomSelect key={f.key} value={filters[f.key] ?? ''} onChange={v => setFilters(p => ({ ...p, [f.key]: v }))} style={{ width: isPhone ? '100%' : 165 }}
+            options={[{ value: '', label: f.all }, ...f.options.map(o => ({ value: o, label: o }))]} />
+        ))}
+        {filtered && (
+          <button type="button" onClick={() => { setFilters({}); setQLive(''); setQ(''); }} style={{ ...S.btnGhost, minHeight: 40 }}>Clear</button>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {mayExport && (<button type="button" onClick={exportRows} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>)}
           <button type="button" onClick={() => pdf()} disabled={!data || pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>{pdfBusy ? 'Making PDF...' : 'Download PDF'}</button>
@@ -653,9 +687,14 @@ function RecordsReport({ token, type }) {
             ))}
           </div>
 
-          <Card title={cfg.title} sub={data.rows.length > rows.length ? `Showing the newest ${rows.length} of ${data.rows.length}. The PDF and CSV have every row.` : `${data.rows.length} row${data.rows.length === 1 ? '' : 's'}, newest first.`}
-            right={data.rows.length > 100 ? <button type="button" onClick={() => setShowAll(v => !v)} style={{ ...S.btnGhost, minHeight: 32 }}>{showAll ? 'Show fewer' : 'Show all'}</button> : null}>
-            <Table cols={cfg.cols} rows={rows.map((r, i) => ({ ...r, key: (r.id || r.orderId || '') + '-' + i }))} empty={cfg.empty} />
+          <Card title={cfg.title} sub={`${total} row${total === 1 ? '' : 's'}${filtered ? ' matching the filters' : ''}, newest first. The PDF and CSV include every row shown by these filters.`}>
+            <Table cols={cfg.cols} rows={rows.map((r, i) => ({ ...r, key: (r.id || r.orderId || '') + '-' + ((page - 1) * perPage + i) }))}
+              empty={filtered ? 'Nothing matches these filters. Clear them to see every row.' : cfg.empty} />
+            {total > 10 && (
+              <div style={{ padding: '10px 14px' }}>
+                <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+              </div>
+            )}
           </Card>
         </div>
       )}
@@ -664,27 +703,107 @@ function RecordsReport({ token, type }) {
 }
 
 // ── Demand ────────────────────────────────────────────────────────────────────
-function DemandReport() {
+// The SSA summary, built the way Home builds its own: the weekly takings of the last year go to
+// Wendell's forecast service and its answer is shown as it gave it - including its own verdict on
+// how far to trust it. The full model output (decomposition, comparisons) stays on Forecast.
+function DemandReport({ token }) {
   const { can } = useAccess();
-  const [state, setState] = useState('checking');   // checking | up | down
+  const colors = useChartColors();
+  const [state, setState] = useState({ phase: 'loading' });   // loading | ready | unavailable
+
   useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
     (async () => {
-      // The service has no health route; an empty forecast request answers 200/422 when it is
-      // up and fails to connect when it is not. Anything that is an HTTP answer counts as up.
       try {
-        const res = await fetchWithTimeout(`${SSA_API_URL}/api/forecast`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: [], forecast_periods: 1, forecast_type: 'weekly', data_type: 'sales' }) }, 6000);
-        setState(res.status < 500 ? 'up' : 'down');
-      } catch { setState('down'); }
+        const res = await fetchWithTimeout(`${API_URL}/api/admin/sales?limit=10000&status=completed`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }, 30000);
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.message || 'Could not read the sales history.');
+        const sales = Array.isArray(j?.data ?? j) ? (j.data ?? j) : [];
+        // Monday-start weeks of takings over the last year - the same series Home sends.
+        const weeks = new Map();
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 365);
+        for (const sale of sales) {
+          if (!sale.saleDate) continue;
+          const d = new Date(sale.saleDate);
+          if (d < cutoff) continue;
+          const wk = new Date(d); wk.setDate(wk.getDate() - ((wk.getDay() + 6) % 7));
+          const key = `${wk.getFullYear()}-${String(wk.getMonth() + 1).padStart(2, '0')}-${String(wk.getDate()).padStart(2, '0')}`;
+          weeks.set(key, (weeks.get(key) ?? 0) + Number(sale.totalPrice ?? 0));
+        }
+        const rows = [...weeks.entries()].sort().map(([date, value]) => ({ date, value: Math.round(value) }));
+        if (rows.length < 10) { if (!cancelled) setState({ phase: 'unavailable', why: `The forecast needs 10 weeks of sales - there are ${rows.length}.` }); return; }
+
+        const f = await fetchWithTimeout(`${SSA_API_URL}/api/forecast`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows, forecast_periods: 4, forecast_type: 'weekly', data_type: 'sales' }) }, 30000);
+        const out = await f.json().catch(() => ({}));
+        if (cancelled) return;
+        // The service explains its own refusals; repeat what it said.
+        if (!f.ok) { setState({ phase: 'unavailable', why: out?.detail || `The forecast service refused the request (${f.status}).` }); return; }
+        setState({ phase: 'ready', rows, ssa: out });
+      } catch (e) {
+        if (!cancelled) setState({ phase: 'unavailable', why: /fetch|network|timed out/i.test(e.message || '') ? 'The forecast service is not answering right now.' : e.message });
+      }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [token]);
+
+  const openForecast = can('forecast') ? (
+    <a href="/dashboard/business/ssa-forecast" style={{ ...S.btnPrimary, minHeight: 38, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>Open SSA Forecast</a>
+  ) : null;
+
+  if (state.phase !== 'ready') {
+    return (
+      <Card title="Demand - SSA forecast" sub="What the forecast expects the coming weeks to bring, from the sales ledger." right={openForecast}>
+        <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13, lineHeight: 1.6 }}>
+          {state.phase === 'loading' ? 'Asking the forecast service' : state.why}
+        </div>
+      </Card>
+    );
+  }
+
+  const { rows, ssa } = state;
+  const dates = ssa.forecast?.dates ?? [];
+  const values = ssa.forecast?.values ?? [];
+  const label = (d) => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+  const chart = [
+    ...rows.slice(-12).map(r => ({ label: label(r.date), actual: r.value, forecast: null })),
+    ...dates.map((d, i) => ({ label: label(d), actual: null, forecast: Math.max(0, Math.round(values[i] ?? 0)) })),
+  ];
+  const low = ssa.data_quality?.is_low_confidence || ssa.accuracy?.mape_reliable === false;
+  const trust = low
+    ? 'Low confidence - not enough clean history to trust this yet.'
+    : ssa.accuracy?.mape != null
+      ? `Backtested MAPE ${Number(ssa.accuracy.mape).toFixed(1)}%${ssa.accuracy.mape_scored != null && ssa.accuracy.mape_total ? ` over ${ssa.accuracy.mape_scored} of ${ssa.accuracy.mape_total} periods` : ''}.`
+      : 'Projected from your own sales history.';
+
   return (
-    <Card title="Demand - SSA forecast" sub="What the forecast expects the coming weeks to bring, from the sales ledger.">
-      <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13, lineHeight: 1.6 }}>
-        {state === 'checking' ? 'Checking the forecast service' : state === 'up'
-          ? <>The forecast service is running. Its full output lives in {can('forecast') ? <a href="/dashboard/business/ssa-forecast" style={{ color: 'var(--gold)', fontWeight: 700 }}>Forecast</a> : 'Forecast'}; this tab will carry the summary once the next version of the model is in.</>
-          : <>The forecast service is not answering right now. Nothing is wrong with your sales - the Demand tab fills in when it is back. {can('forecast') ? <>Open <a href="/dashboard/business/ssa-forecast" style={{ color: 'var(--gold)', fontWeight: 700 }}>Forecast</a> to check it.</> : null}</>}
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 14 }}>
+        {dates.slice(0, 4).map((d, i) => (
+          <div key={d} style={S.cardSm}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.4px' }}>Week of {label(d)}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: 'var(--gold)', fontVariantNumeric: 'tabular-nums' }}>{peso(Math.max(0, values[i] ?? 0)).replace('.00', '')}</div>
+            <div style={{ fontSize: 11.5, marginTop: 2, color: 'var(--gray)' }}>expected sales</div>
+          </div>
+        ))}
       </div>
-    </Card>
+      <Card title="Weekly sales and the SSA forecast" sub={`Gold is the last 12 weeks of sales; the lighter bars are the next ${dates.length} weeks the forecast expects. ${trust}`} right={openForecast}>
+        <div style={{ height: 260, padding: '12px 8px 4px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chart} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+              <CartesianGrid vertical={false} stroke={colors.grid} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: colors.text }} tickLine={false} axisLine={{ stroke: colors.grid }} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 11, fill: colors.text }} tickLine={false} axisLine={false} tickFormatter={v => pesoShort(v)} width={56} />
+              <Tooltip formatter={(v, n) => [peso(v), n === 'actual' ? 'Sales' : 'Forecast']} contentStyle={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+              <Legend formatter={n => (n === 'actual' ? 'Sales' : 'SSA forecast')} wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="actual" fill={colors.now} radius={[4, 4, 0, 0]} maxBarSize={28} />
+              <Bar dataKey="forecast" fill={colors.forecast} radius={[4, 4, 0, 0]} maxBarSize={28} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+    </>
   );
 }
 
@@ -718,7 +837,7 @@ export default function ReportsPage() {
         {tab === 'sales' && <SalesReport token={token} />}
         {(tab === 'orders' || tab === 'transactions') && <RecordsReport key={tab} token={token} type={tab} />}
         {tab === 'inventory' && <InventoryReport token={token} />}
-        {tab === 'demand' && <DemandReport />}
+        {tab === 'demand' && <DemandReport token={token} />}
       </div>
     </ErrorBoundary>
   );
