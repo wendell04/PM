@@ -100,9 +100,12 @@ class ProofLinkController extends Controller
         // apart. Both go through the same controller, the same notifications and the same
         // downstream effects; the only difference is how the customer was identified.
         $orders = app(OrderController::class);
+        // requestDesignRevision reads the customer's words as 'notes'. They were passed as
+        // 'revisionNotes', so the note never arrived and every "request changes" from the email
+        // link failed validation.
         $sub    = Request::create('/', 'POST', [
-            'itemIndex'      => null,
-            'revisionNotes'  => $validated['notes'] ?? null,
+            'itemIndex' => null,
+            'notes'     => $validated['notes'] ?? null,
         ]);
         $sub->setUserResolver(fn () => \App\Models\User::find((string) $order->userId));
 

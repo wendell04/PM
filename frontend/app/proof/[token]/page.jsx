@@ -47,8 +47,9 @@ export default function ProofPage({ params }) {
   }, [token]);
 
   const respond = async (decision) => {
-    if (decision === 'revision' && !notes.trim()) {
-      setError('Tell us what to change, so we do not send the same thing back.');
+    if (decision === 'revision' && notes.trim().length < 5) {
+      // The server asks for at least 5 characters; say so here instead of letting it refuse.
+      setError(notes.trim() ? 'Please say a little more about what to change.' : 'Tell us what to change, so we do not send the same thing back.');
       return;
     }
     setBusy(decision); setError('');
