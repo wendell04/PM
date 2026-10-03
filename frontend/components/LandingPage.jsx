@@ -28,6 +28,7 @@ import { socialsFrom, socialNames } from '@/lib/socialLinks';
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import { priceFrom } from '@/lib/priceFrom';
 import { priceLabel, variantCount, salePrice } from '@/lib/productCardInfo';
+import { pricingCards as buildPricingCards, fullPricelist as buildFullPricelist } from '@/lib/pricing';
 import OtpInput from '@/components/auth/OtpInput';
 import { describeAuthError } from '@/lib/describeAuthError';
 
@@ -229,7 +230,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   // Phones show the first four questions; the rest are one tap away. Desktop and the old phone
   // layout always show all six - the cap and the button only exist under .lp-m2.
   const [faqAll, setFaqAll] = useState(false);
-  // CMS-editable pricing (falls back to hardcoded publicPricing)
+  // CMS pricing settings: which categories show, their order and notes (prices come from the catalogue)
   const [pricingContent, setPricingContent] = useState(null);
   // CMS-editable Why-Us features / How-It-Works steps / Contact info (fallbacks below)
   const [whyusContent, setWhyusContent]     = useState(null);
@@ -1182,26 +1183,16 @@ const handleForgotResetPassword = async () => {
   ];
 
 
-  const publicPricing = [
-    { category: 'T-Shirt Printing',      startingAt: '₱300', note: 'Final cost depends on quantity, design, material & panel print.' },
-    { category: 'DTF Printing',          startingAt: '₱250', note: 'Per meter. Final cost depends on quantity.' },
-    { category: 'Mugs (11oz)',           startingAt: '₱50',  note: 'Ceramic White, Inner Color & Magic Mug variants.' },
-    { category: 'Button Badges (2.25")', startingAt: '₱10',  note: 'Badge/Button Pin, Magnet Badge & Keychain Badge.' },
-    { category: 'Canvas Totebag',        startingAt: '₱70',  note: 'Plain & w/ Zipper+Pocket. Small, Medium, Large.' },
-    { category: 'Ref Magnet',            startingAt: '₱15',  note: 'Maximum size 3".' },
-    { category: 'Magnetic Bookmark',     startingAt: '₱15',  note: 'Maximum size 2.5".' },
-    { category: 'Stickers & Labels',     startingAt: '₱25',  note: 'Kisscut / Diecut. Vinyl, Specialty, Photopaper, Regular & Kraft.' },
-  ];
-
-  // CMS pricing cards override the hardcoded defaults when set in the Homepage editor.
-  const pricingCards = (pricingContent?.cards?.length) ? pricingContent.cards : publicPricing;
+  // One card per category the catalogue sells, its lowest current price, in the order and with the
+  // notes set in Homepage CMS > Pricing. Prices are no longer typed in: they were, and went stale.
+  const pricingCards = useMemo(() => buildPricingCards(navProducts, pricingContent?.cards), [navProducts, pricingContent]);
 
   // Why-Us features + How-It-Works steps + Contact info - CMS override w/ hardcoded fallback.
   const DEFAULT_WHYUS = [
     { title: 'Affordable Pricing',   desc: 'Premium prints at prices that make sense. No hidden fees, no overpricing.' },
     { title: 'Fast Turnaround',      desc: 'Standard orders arrive in 4-5 days, rush in 2-3. Ready-made items ship the next day.' },
     { title: 'Design Assistance',    desc: 'No designer? No problem. Request a design and our team will create it for you.' },
-    { title: 'Approval Before Print', desc: 'You see and approve the final design before we print - 100% satisfaction guaranteed.' },
+    { title: 'Approval Before Print', desc: 'You see and approve the final design before we print anything.' },
   ];
   const whyusFeatures = whyusContent?.features?.length ? whyusContent.features : DEFAULT_WHYUS;
 
@@ -1246,42 +1237,13 @@ const handleForgotResetPassword = async () => {
     { q: 'I don’t have a design. Can you make one?', a: 'Yes! Pick “Request a Design” when you order and our team will create it for you. You’ll review and approve the proof before we print anything.' },
     { q: 'What files do you accept for custom uploads?', a: 'PNG, JPG, or PDF work best. For the sharpest print, send high-resolution files (around 300 DPI). If your file isn’t print-ready, we’ll let you know.' },
     { q: 'How do I pay?', a: 'We accept GCash, Maya, and credit/debit cards (Visa & Mastercard). For bulk orders, a downpayment option is available at checkout.' },
-    { q: 'Do you deliver?', a: 'Yes - we ship nationwide via courier. The delivery fee depends on your location and is shown at checkout or arranged with the rider for booked couriers.' },
+    { q: 'Do you deliver?', a: 'Yes - we ship nationwide via courier. Once your order is ready we book the courier and send you the exact delivery fee in chat; it depends on your location and the size of the parcel. Orders above the free-delivery amount ship free.' },
     { q: 'Do you offer bulk or wholesale pricing?', a: 'Definitely. Prices drop as quantity goes up. Log in or register to view the complete pricelist with bulk breakdowns for every product.' },
   ];
 
-  const fullPricelist = [
-    { category: 'T-Shirt Printing', note: 'Final cost depends on quantity, design, material & panel print.', tiers: null, startingAt: '₱300' },
-    { category: 'DTF Printing', note: 'Per meter. Final cost depends on quantity.', tiers: null, startingAt: '₱250/meter' },
-    { category: 'Mugs (11oz)', note: null, variants: [
-      { name: 'Ceramic White',   tiers: [['1-20 pcs','95'],['21-30 pcs','90'],['31-50 pcs','85'],['51-100 pcs','80'],['101-300 pcs','70'],['301-500 pcs','60'],['501-1000 pcs','50']] },
-      { name: 'Inner Color Mug', tiers: [['1-20 pcs','100'],['21-30 pcs','95'],['31-50 pcs','90'],['51-100 pcs','85'],['101-300 pcs','75'],['301-500 pcs','65'],['501-1000 pcs','55']] },
-      { name: 'Magic Mug',       tiers: [['1-20 pcs','200'],['21-30 pcs','180'],['31-50 pcs','170'],['51-100 pcs','160'],['101-300 pcs','150'],['301-500 pcs','130'],['501-1000 pcs','100']] },
-    ]},
-    { category: 'Button Badges (2.25")', note: null, variants: [
-      { name: 'Badge/Button Pin', tiers: [['1-20 pcs','30'],['21-30 pcs','28'],['31-50 pcs','25'],['51-100 pcs','20'],['101-300 pcs','18'],['301-500 pcs','15'],['501-1000 pcs','10']] },
-      { name: 'Magnet Badge',     tiers: [['1-20 pcs','30'],['21-30 pcs','28'],['31-50 pcs','25'],['51-100 pcs','23'],['101-300 pcs','20'],['301-500 pcs','18'],['501-1000 pcs','15']] },
-      { name: 'Keychain Badge',   tiers: [['1-20 pcs','33'],['21-30 pcs','30'],['31-50 pcs','28'],['51-100 pcs','25'],['101-300 pcs','23'],['301-500 pcs','20'],['501-1000 pcs','18']] },
-    ]},
-    { category: 'Canvas Totebag', note: null, variants: [
-      { name: 'Plain Small (10x12")',               tiers: [['1-20 pcs','100'],['21-30 pcs','95'],['31-50 pcs','90'],['51-100 pcs','85'],['101-300 pcs','80'],['301-500 pcs','75'],['501-1000 pcs','70']] },
-      { name: 'Plain Medium (12x14")',              tiers: [['1-20 pcs','110'],['21-30 pcs','100'],['31-50 pcs','95'],['51-100 pcs','90'],['101-300 pcs','85'],['301-500 pcs','80'],['501-1000 pcs','75']] },
-      { name: 'Plain Large (14x16")',               tiers: [['1-20 pcs','120'],['21-30 pcs','110'],['31-50 pcs','105'],['51-100 pcs','100'],['101-300 pcs','95'],['301-500 pcs','90'],['501-1000 pcs','85']] },
-      { name: 'w/ Zipper & Pocket Small (10x12")',  tiers: [['1-20 pcs','130'],['21-30 pcs','120'],['31-50 pcs','115'],['51-100 pcs','110'],['101-300 pcs','105'],['301-500 pcs','95'],['501-1000 pcs','90']] },
-      { name: 'w/ Zipper & Pocket Medium (12x14")', tiers: [['1-20 pcs','140'],['21-30 pcs','130'],['31-50 pcs','125'],['51-100 pcs','120'],['101-300 pcs','115'],['301-500 pcs','110'],['501-1000 pcs','105']] },
-      { name: 'w/ Zipper & Pocket Large (14x16")',  tiers: [['1-20 pcs','150'],['21-30 pcs','140'],['31-50 pcs','135'],['51-100 pcs','130'],['101-300 pcs','125'],['301-500 pcs','120'],['501-1000 pcs','115']] },
-    ]},
-    { category: 'Ref Magnet (Max 3")',          note: null, tiers: [['1-20 pcs','30'],['21-30 pcs','28'],['31-50 pcs','25'],['51-100 pcs','23'],['101-300 pcs','20'],['301-500 pcs','18'],['501-1000 pcs','15']] },
-    { category: 'Magnetic Bookmark (Max 2.5")', note: null, tiers: [['1-20 pcs','30'],['21-30 pcs','28'],['31-50 pcs','25'],['51-100 pcs','23'],['101-300 pcs','20'],['301-500 pcs','18'],['501-1000 pcs','15']] },
-    { category: 'Stickers & Labels (Kisscut / Diecut)', note: 'Price is per A4 size, depending on how many pieces fit on one A4 sheet.', variants: [
-      { name: 'Vinyl Waterproof (Glossy/Matte/Transparent)',                         tiers: [['1-30 pcs','50'],['31-50 pcs','45'],['51-100 pcs','43'],['101-300 pcs','40'],['301-500 pcs','38'],['501-1000 pcs','35']] },
-      { name: 'Vinyl Waterproof Laminated (Glossy/Matte/Glittered/Holographic)',     tiers: [['1-30 pcs','55'],['31-50 pcs','50'],['51-100 pcs','48'],['101-300 pcs','45'],['301-500 pcs','43'],['501-1000 pcs','40']] },
-      { name: 'Specialty Label Waterproof (Pearl Glossy/Aluminum/Gold/Holographic)', tiers: [['1-30 pcs','65'],['31-50 pcs','60'],['51-100 pcs','58'],['101-300 pcs','55'],['301-500 pcs','53'],['501-1000 pcs','50']] },
-      { name: 'Photopaper Waterproof (Glossy/Matte)',                                tiers: [['1-30 pcs','45'],['31-50 pcs','40'],['51-100 pcs','38'],['101-300 pcs','35'],['301-500 pcs','33'],['501-1000 pcs','30']] },
-      { name: 'Regular Sticker Paper Non-Waterproof (Glossy/Matte)',                 tiers: [['1-30 pcs','40'],['31-50 pcs','38'],['51-100 pcs','35'],['101-300 pcs','33'],['301-500 pcs','30'],['501-1000 pcs','28']] },
-      { name: 'Kraft Sticker Paper (Glossy/Matte/Transparent)',                      tiers: [['1-30 pcs','35'],['31-50 pcs','33'],['51-100 pcs','30'],['101-300 pcs','28'],['301-500 pcs','27'],['501-1000 pcs','25']] },
-    ]},
-  ];
+  // From the published catalogue: every product with its quantity tiers, so the pricelist can
+  // never advertise an old price or a product that was unpublished.
+  const fullPricelist = useMemo(() => buildFullPricelist(navProducts), [navProducts]);
 
   // ─── SVG helpers ──────────────────────────────────────────────────────────────
   const EyeOpen = () => (
@@ -2282,11 +2244,14 @@ const handleForgotResetPassword = async () => {
                 <div className="fcard"><div className="fcard-inner">
                   <div className="fcard-label">Total Orders</div>
                   <div className="fcard-value gold-text">{landingStats ? landingStats.orders.toLocaleString() : '-'}</div>
-                  <div className="fcard-bar"><div className="fcard-bar-fill" style={{width:'82%',background:'linear-gradient(90deg,var(--gold-dark),var(--gold))'}}/></div>
+                  {/* A bar here was fixed at 82% - a picture of nothing. The note says what the number counts. */}
+                  <div className="fcard-note">orders placed, cancelled ones left out</div>
                 </div></div>
                 <div className="fcard"><div className="fcard-inner">
-                  <div className="fcard-label">Satisfaction Rate</div>
-                  <div className="fcard-value red-text">{landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '-'}</div>
+                  {/* It is the average star rating, so it says so. "Satisfaction rate" claimed a survey
+                      nobody ran: 4.6 stars was being shown as "92% satisfied". */}
+                  <div className="fcard-label">Average Rating</div>
+                  <div className="fcard-value red-text">{landingStats?.avgRating ? <>{Number(landingStats.avgRating).toFixed(1)}<span style={{ fontSize: '0.5em', fontWeight: 600, opacity: 0.75 }}> / 5</span></> : '-'}</div>
                   <div className="fcard-bar"><div className="fcard-bar-fill" style={{width: landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '0%',background:'linear-gradient(90deg,var(--red-dark),var(--red))'}}/></div>
                   {/* The count belongs to the rating it is the basis of. It used to sit under the
                       customer count, where it read as a claim about customers. */}
@@ -2493,7 +2458,9 @@ const handleForgotResetPassword = async () => {
             {/* Right - pricing grid */}
             <div className="pub-pricing-grid">
               {pricingCards.map((item, i) => (
-                <div className="pub-pricing-card fade-up" key={i}
+                // No fade-up: the observer that reveals those runs once on mount, and these cards are
+                // built after the catalogue arrives - they would stay invisible.
+                <div className="pub-pricing-card" key={item.category}
                   onClick={() => router.push(pricingLink(item.category))}
                   role="link" tabIndex={0}
                   onKeyDown={e => { if (e.key === 'Enter') router.push(pricingLink(item.category)); }}

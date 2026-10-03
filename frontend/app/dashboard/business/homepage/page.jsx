@@ -7,6 +7,7 @@
  * Shop promo strips live in the separate Banners module.
  */
 
+import { categorySummary, pesoWhole } from '@/lib/pricing';
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -58,24 +59,14 @@ const SEED_IMAGES = [
   ['Caps', '/products/Caps.jpg', 'center 60%'],
 ];
 
-// Mirrors the landing's hardcoded pricing - owner starts from these, then edits.
-const DEFAULT_PRICING = [
-  { category: 'T-Shirt Printing', startingAt: '₱300', note: 'Final cost depends on quantity, design, material & panel print.' },
-  { category: 'DTF Printing', startingAt: '₱250', note: 'Per meter. Final cost depends on quantity.' },
-  { category: 'Mugs (11oz)', startingAt: '₱50', note: 'Ceramic White, Inner Color & Magic Mug variants.' },
-  { category: 'Button Badges (2.25")', startingAt: '₱10', note: 'Badge/Button Pin, Magnet Badge & Keychain Badge.' },
-  { category: 'Canvas Totebag', startingAt: '₱70', note: 'Plain & w/ Zipper+Pocket. Small, Medium, Large.' },
-  { category: 'Ref Magnet', startingAt: '₱15', note: 'Maximum size 3".' },
-  { category: 'Magnetic Bookmark', startingAt: '₱15', note: 'Maximum size 2.5".' },
-  { category: 'Stickers & Labels', startingAt: '₱25', note: 'Kisscut / Diecut. Vinyl, Specialty, Photopaper, Regular & Kraft.' },
-];
+// Pricing cards are built from the published catalogue (lib/pricing); only show/order/note are set here.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const DEFAULT_WHYUS = [
   { title: 'Affordable Pricing', desc: 'Premium prints at prices that make sense. No hidden fees, no overpricing.' },
   { title: 'Fast Turnaround', desc: 'Standard orders arrive in 4-5 days, rush in 2-3. Ready-made items ship the next day.' },
   { title: 'Design Assistance', desc: 'No designer? No problem. Request a design and our team will create it for you.' },
-  { title: 'Approval Before Print', desc: 'You see and approve the final design before we print - 100% satisfaction guaranteed.' },
+  { title: 'Approval Before Print', desc: 'You see and approve the final design before we print anything.' },
 ];
 const DEFAULT_HIW = [
   { title: 'Browse Products', desc: 'Explore our full catalogue of personalizable items - shirts, mugs, bags, stickers, and more.' },
@@ -252,24 +243,37 @@ export default function HomepageCmsPage() {
     },
   });
 
-  // ── Pricing cards (CMS - site_content key 'pricing'; falls back to defaults) ──
-  const [pricing, setPricing] = useState(null);
+  // ── Pricing cards ──
+  // One card per category the catalogue sells; the price is the cheapest published product's,
+  // computed on the homepage. Here the owner only chooses which categories show, their order,
+  // and a short note. (Prices used to be typed in here and went stale with every price change.)
+  const [pricing, setPricing] = useState(null);   // [{ category, note, hidden, startingAt, count }]
   useEffect(() => {
-    fetch(`${API_URL}/api/storefront/content/pricing`)
-      .then(r => r.json())
-      .then(d => setPricing(Array.isArray(d?.data?.cards) ? d.data.cards : DEFAULT_PRICING))
-      .catch(() => setPricing(DEFAULT_PRICING));
+    Promise.all([
+      fetch(`${API_URL}/api/products?slim=true`).then(r => r.json()).catch(() => ({})),
+      fetch(`${API_URL}/api/storefront/content/pricing`).then(r => r.json()).catch(() => ({})),
+    ]).then(([pr, cms]) => {
+      const products = Array.isArray(pr?.data ?? pr) ? (pr.data ?? pr) : [];
+      const saved = Array.isArray(cms?.data?.cards) ? cms.data.cards : [];
+      const key = (s) => String(s || '').trim().toLowerCase();
+      const pos = (cat) => { const i = saved.findIndex(c => key(c.category) === key(cat)); return i < 0 ? 9999 : i; };
+      setPricing(categorySummary(products)
+        .sort((a, b) => pos(a.category) - pos(b.category) || a.category.localeCompare(b.category))
+        .map(e => {
+          const s0 = saved.find(c => key(c.category) === key(e.category)) || {};
+          return { category: e.category, note: s0.note || '', hidden: !!s0.hidden, startingAt: e.min != null ? pesoWhole(e.min) : 'By quote', count: e.names.length };
+        }));
+    });
   }, []);
   const setPricingCard = (i, k, v) => setPricing(p => p.map((c, idx) => idx === i ? { ...c, [k]: v } : c));
-  const addPricingCard = () => setPricing(p => [...(p || []), { category: '', startingAt: '', note: '' }]);
-  const removePricingCard = (i) => setPricing(p => p.filter((_, idx) => idx !== i));
+  const movePricingCard = (i, d) => setPricing(p => { const n = [...p]; const j = i + d; if (j < 0 || j >= n.length) return p; [n[i], n[j]] = [n[j], n[i]]; return n; });
   const savePricing = async () => {
     setBusy(true);
     try {
       const r = await fetch(`${API_URL}/api/admin/content/pricing`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ data: { cards: pricing } }),
+        body: JSON.stringify({ data: { cards: pricing.map(c => ({ category: c.category, note: c.note.trim(), hidden: !!c.hidden })) } }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'Save failed');
       setModal({ type: 'success', title: 'Saved', message: 'Pricing updated - live on the homepage.' }); setTimeout(() => setModal(null), 1400);
@@ -530,21 +534,30 @@ export default function HomepageCmsPage() {
           <h2 style={cardTitle}>Pricing Cards <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)' }}>&ldquo;Our Price List&rdquo; on the homepage</span></h2>
           {pricing === null ? (
             <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading…</div>
+          ) : pricing.length === 0 ? (
+            <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>No published products yet. Publish a product and its category appears here.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
+                One card per category in the published catalogue. &ldquo;Starts at&rdquo; is the cheapest published product in it and updates by itself when prices change; unpublished products are left out. Choose which cards show, their order, and an optional note.
+              </p>
               {pricing.map((c, i) => (
-                <div key={i} className="hp-price-row" style={{ display: 'grid', gridTemplateColumns: '1.3fr 0.6fr 2.2fr auto', gap: '8px', alignItems: 'center' }}>
-                  <input style={inp} placeholder="Category (e.g. T-Shirt Printing)" value={c.category || ''} onChange={e => setPricingCard(i, 'category', e.target.value)}  maxLength={255}/>
-                  <input style={inp} placeholder="₱300" value={c.startingAt || ''} onChange={e => setPricingCard(i, 'startingAt', e.target.value)}  maxLength={12}/>
-                  <input style={inp} placeholder="Short note" value={c.note || ''} onChange={e => setPricingCard(i, 'note', e.target.value)}  maxLength={255}/>
-                  <button onClick={() => removePricingCard(i)} title="Remove" style={{ padding: '0.5rem 0.7rem', borderRadius: 6, border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+                <div key={c.category} className="hp-price-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1.2fr 0.6fr 2fr auto', gap: '8px', alignItems: 'center', opacity: c.hidden ? 0.55 : 1 }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', cursor: 'pointer' }} title="Show this card on the homepage">
+                    <input type="checkbox" checked={!c.hidden} onChange={e => setPricingCard(i, 'hidden', !e.target.checked)} /> Show
+                  </label>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{c.category} <span style={{ fontWeight: 400, color: 'var(--gray)', fontSize: '0.75rem' }}>{c.count} product{c.count === 1 ? '' : 's'}</span></div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--gold)', fontWeight: 700 }} title="Computed from the published products">{c.startingAt}</div>
+                  <input style={inp} placeholder="Short note (optional)" value={c.note || ''} onChange={e => setPricingCard(i, 'note', e.target.value)} maxLength={140} />
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => movePricingCard(i, -1)} disabled={i === 0} title="Move up" aria-label={`Move ${c.category} up`} style={{ padding: '0.4rem 0.6rem', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--white)', cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.35 : 1 }}>&uarr;</button>
+                    <button onClick={() => movePricingCard(i, 1)} disabled={i === pricing.length - 1} title="Move down" aria-label={`Move ${c.category} down`} style={{ padding: '0.4rem 0.6rem', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--white)', cursor: i === pricing.length - 1 ? 'default' : 'pointer', opacity: i === pricing.length - 1 ? 0.35 : 1 }}>&darr;</button>
+                  </div>
                 </div>
               ))}
               <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.4rem', flexWrap: 'wrap' }}>
-                <button onClick={addPricingCard} style={{ padding: '0.45rem 0.9rem', borderRadius: 8, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.8rem' }}>+ Add card</button>
                 <button onClick={savePricing} disabled={busy} style={{ ...pubBtn(false), marginLeft: 'auto' }}>{busy ? 'Saving…' : 'Save pricing'}</button>
               </div>
-              <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: 0 }}>Cards auto-link to the matching shop collection. Saving applies to the homepage immediately.</p>
             </div>
           )}
         </div>

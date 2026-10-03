@@ -223,7 +223,9 @@ class ReviewController extends Controller
         try {
             // Cancelled orders are not orders the shop delivered, and counting them inflates the
             // one number on the landing page a visitor is most likely to check against reality.
-            $live      = Order::whereNotIn('orderStatus', ['cancelled', 'Cancelled'])->get(['userId']);
+            // A checkout that was never paid is not an order, here as everywhere else.
+            $live      = Order::whereNotIn('orderStatus', ['cancelled', 'Cancelled'])
+                ->where('checkoutPending', '!=', true)->where('voidedCheckout', '!=', true)->get(['userId']);
             $orders    = $live->count();
             $customers = $live->pluck('userId')->filter()->unique()->count();
             $avgRating = Review::where('is_visible', true)->avg('rating');
