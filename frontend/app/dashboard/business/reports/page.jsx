@@ -112,6 +112,9 @@ const PRESETS = [
   { id: 'custom',      label: 'Custom' },
 ];
 
+// Every dated report opens on the last 30 days: "This month" is nearly empty in a month's first days.
+const DEFAULT_RANGE = () => { const [from, to] = PRESETS.find(p => p.id === 'last-30').range(); return { preset: 'last-30', from, to }; };
+
 function RangePicker({ preset, from, to, onChange }) {
   const isPhone = useIsPhone();
   const [open, setOpen] = useState(false);
@@ -237,7 +240,7 @@ function SalesReport({ token }) {
   const mayExport = useAccess().can('reports.export');
   const isPhone = useIsPhone();
   const colors = useChartColors();
-  const [range, setRange] = useState(() => { const [from, to] = PRESETS[0].range(); return { preset: 'this-month', from, to }; });
+  const [range, setRange] = useState(DEFAULT_RANGE);
   const [bucket, setBucket] = useState('auto');
   const [data, setData] = useState(null);
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -586,7 +589,7 @@ function RecordsReport({ token, type }) {
   const cfg = RECORDS[type];
   const mayExport = useAccess().can('reports.export');
   const isPhone = useIsPhone();
-  const [range, setRange] = useState(() => { const [from, to] = PRESETS[0].range(); return { preset: 'this-month', from, to }; });
+  const [range, setRange] = useState(DEFAULT_RANGE);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pdfBusy, setPdfBusy] = useState(false);

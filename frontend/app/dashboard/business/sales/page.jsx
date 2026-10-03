@@ -257,7 +257,9 @@ export default function SalesListPage() {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
-  const [dateFilter, setDateFilter] = useState('all');
+  // Last 30 days, as on Reports and Stock In: "This month" is nearly empty in a month's first days,
+  // and All Time puts every tile on the whole history.
+  const [dateFilter, setDateFilter] = useState('last-30');
   const [kindFilter, setKindFilter] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ fromMonth: 0, toMonth: 0, year: 2026 });
   const [expandedRows, setExpandedRows] = useState(new Set());
@@ -326,6 +328,7 @@ export default function SalesListPage() {
       let matchesDate = true;
       if (dateFilter === 'today') matchesDate = orderDate.getTime() === today.getTime();
       else if (dateFilter === 'this-week') matchesDate = orderDate >= new Date(today.getTime() - 7 * 864e5);
+      else if (dateFilter === 'last-30') matchesDate = orderDate >= new Date(today.getTime() - 29 * 864e5);
       else if (dateFilter === 'this-month') matchesDate = orderDate.getMonth() === today.getMonth() && orderDate.getFullYear() === today.getFullYear();
       else if (dateFilter === 'custom') matchesDate = orderDate.getFullYear() === customDateRange.year && orderDate.getMonth() >= customDateRange.fromMonth && orderDate.getMonth() <= customDateRange.toMonth;
 
@@ -349,6 +352,7 @@ export default function SalesListPage() {
       const today = new Date(); today.setHours(0, 0, 0, 0); orderDate.setHours(0, 0, 0, 0);
       if (dateFilter === 'today') matchesDate = orderDate.getTime() === today.getTime();
       else if (dateFilter === 'this-week') matchesDate = orderDate >= new Date(today.getTime() - 7 * 864e5);
+      else if (dateFilter === 'last-30') matchesDate = orderDate >= new Date(today.getTime() - 29 * 864e5);
       else if (dateFilter === 'this-month') matchesDate = orderDate.getMonth() === today.getMonth() && orderDate.getFullYear() === today.getFullYear();
       else if (dateFilter === 'custom') matchesDate = orderDate.getFullYear() === customDateRange.year && orderDate.getMonth() >= customDateRange.fromMonth && orderDate.getMonth() <= customDateRange.toMonth;
 
@@ -401,6 +405,7 @@ export default function SalesListPage() {
     let start = null, end = null;
     if (dateFilter === 'today') { start = new Date(today); end = new Date(today.getTime() + day - 1); }
     else if (dateFilter === 'this-week') { start = new Date(today.getTime() - 7 * day); end = new Date(today.getTime() + day - 1); }
+    else if (dateFilter === 'last-30') { start = new Date(today.getTime() - 29 * day); end = new Date(today.getTime() + day - 1); }
     else if (dateFilter === 'this-month') { start = new Date(today.getFullYear(), today.getMonth(), 1); end = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59); }
     else if (dateFilter === 'custom') {
       start = new Date(customDateRange.year, customDateRange.fromMonth, 1);
@@ -764,7 +769,7 @@ export default function SalesListPage() {
               value={dateFilter} onChange={setDateFilter} style={{ width: '150px' }}
               options={[
                 { value: 'all', label: 'All Time' }, { value: 'today', label: 'Today' },
-                { value: 'this-week', label: 'This Week' }, { value: 'this-month', label: 'This Month' },
+                { value: 'this-week', label: 'This Week' }, { value: 'last-30', label: 'Last 30 Days' }, { value: 'this-month', label: 'This Month' },
                 { value: 'custom', label: 'Custom Range' },
               ]}
             />
