@@ -28,7 +28,8 @@ use Illuminate\Console\Command;
  */
 class BackfillSaleCost extends Command
 {
-    protected $signature = 'sales:backfill-cost {--apply : Persist the changes (otherwise dry-run)}';
+    protected $signature = 'sales:backfill-cost {--apply : Persist the changes (otherwise dry-run)}
+                            {--recorded-only : Only lines costed from the stock their order actually used}';
     protected $description = 'Cost the completed sales that were recorded at cost 0 (variant BOMs were never looked up).';
 
     public function handle(): int
@@ -52,16 +53,20 @@ class BackfillSaleCost extends Command
             if (!$product) { $skipped[$why] = ($skipped[$why] ?? 0) + 1; continue; }
 
             $qty  = (int) ($s->quantity ?? 0);
-            $cost = CostResolver::lineCost($product, $qty, $variantId);
+            // First what the order line really used: the production deductions recorded against
+            // it. That is the cost on the day, not today's price, so it is preferred when it exists.
+            $cost = $this->recordedCost($s);
+            $from = 'recorded';
+            if ($cost <= 0 && !$this->option('recorded-only')) { $cost = CostResolver::lineCost($product, $qty, $variantId); $from = 'current price'; }
             if ($cost <= 0) { $skipped['no cost source on the product'] = ($skipped['no cost source on the product'] ?? 0) + 1; continue; }
 
             $rev = (float) ($s->totalPrice ?? 0);
             $fixed++;
             $revenue += $rev;
             $added   += $cost;
-            $this->line(sprintf('%s  %-44s x%-4d sold %9.2f  cost %8.2f  profit %9.2f -> %9.2f',
+            $this->line(sprintf('%s  %-44s x%-4d sold %9.2f  cost %8.2f (%s)  profit %9.2f -> %9.2f',
                 $apply ? 'FIXING  ' : 'would fix',
-                mb_substr((string) $s->productName, 0, 44), $qty, $rev, $cost, $rev, $rev - $cost));
+                mb_substr((string) $s->productName, 0, 44), $qty, $rev, $cost, $from, $rev, $rev - $cost));
 
             if ($apply) {
                 $s->cost   = $cost;
@@ -80,6 +85,25 @@ class BackfillSaleCost extends Command
         foreach ($skipped as $why => $n) $this->line("  left alone: $n ($why)");
         if (!$apply) $this->comment('Dry run. Re-run with --apply to write it. Back up the sales collection first.');
         return self::SUCCESS;
+    }
+
+    /**
+     * The cost production recorded for this sale's order line, or 0. The sale does not store which
+     * line it was, so the line is found by its name and quantity on the order; two lines with the
+     * same name and quantity are not told apart, and get 0.
+     */
+    private function recordedCost(Sale $s): float
+    {
+        $ref = (string) ($s->orderRef ?? '');
+        if ($ref === '' && preg_match('/From (?:Walk-in )?Order:\s*(\S+)/i', (string) ($s->notes ?? ''), $m)) $ref = $m[1];
+        $order = $ref !== '' ? (\App\Models\Order::find($ref) ?? \App\Models\Order::where('orderId', $ref)->first()) : null;
+        if (!$order) return 0.0;
+        $hits = [];
+        foreach (array_values($order->items ?? []) as $i => $item) {
+            $name = ($item['productName'] ?? '') . (!empty($item['variantName']) ? ' (' . $item['variantName'] . ')' : '');
+            if ($name === (string) $s->productName && (int) ($item['qty'] ?? 0) === (int) $s->quantity) $hits[] = $i;
+        }
+        return count($hits) === 1 ? CostResolver::recordedLineCost((string) $order->_id, $hits[0]) : 0.0;
     }
 
     /** @return array{0:?Product,1:?string,2:string} the product, the variant id, and why not */

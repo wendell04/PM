@@ -2057,6 +2057,10 @@ class OrderController extends Controller
                 // With the VARIANT. Without it only the product-level BOM was tried, which on the live
                 // catalogue points at nothing - so custom lines were recorded at cost 0.
                 $cost        = \App\Support\CostResolver::lineCost($product, $item['qty'], $item['variantId'] ?? null);
+                // A quoted product has no materials list of its own (the shirt comes from the
+                // quotation), so lineCost() finds 0. Production has already deducted and costed what
+                // this line used - that recorded cost is the real one.
+                if ($cost <= 0) $cost = \App\Support\CostResolver::recordedLineCost((string) $order->_id, (int) $lineIdx);
                 $profit      = $netLine - $cost;
                 $variantName = $item['variantName'] ?? '';
 

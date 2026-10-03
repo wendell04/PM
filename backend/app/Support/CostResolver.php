@@ -31,6 +31,52 @@ use App\Models\BillOfMaterial;
 class CostResolver
 {
     /**
+     * What the materials of ONE order line actually cost, read from the stock production took off
+     * the shelf for it.
+     *
+     * lineCost() reads the product's materials list. A quoted product has none - "T-Shirt Printing"
+     * gets its shirt from the quotation - so its sales were written at cost 0 and reported as all
+     * profit, while QC had already deducted those shirts and recorded what they cost. This finds the
+     * line's job orders (orderId + itemIndex), takes the materials on their snapshot, and sums the
+     * production deductions recorded against the order for those materials. A material shared by
+     * more than one line of the order is split by each line's planned quantity. 0 when nothing can
+     * be matched - a guessed cost is worse than a missing one.
+     */
+    public static function recordedLineCost(string $orderId, int $lineIdx): float
+    {
+        if ($orderId === '') return 0.0;
+        $snapshot = function ($jo): array {
+            $b = $jo->bomSnapshot ?? [];
+            if (is_string($b)) $b = json_decode($b, true) ?: [];
+            return is_array($b) ? $b : [];
+        };
+        // Planned quantity of each material, per line, across every job of the order.
+        $planned = [];   // inventoryId => [lineIdx => qty]
+        foreach (\App\Models\JobOrder::where('orderId', $orderId)->get() as $jo) {
+            if ($jo->itemIndex === null) continue;
+            foreach ($snapshot($jo) as $m) {
+                $id = (string) ($m['inventoryId'] ?? '');
+                if ($id === '') continue;
+                $planned[$id][(int) $jo->itemIndex] = ($planned[$id][(int) $jo->itemIndex] ?? 0)
+                    + (float) ($m['totalQty'] ?? $m['qtyPerUnit'] ?? 0);
+            }
+        }
+        $mine = array_filter($planned, fn ($byLine) => isset($byLine[$lineIdx]));
+        if (!$mine) return 0.0;
+
+        $cost = 0.0;
+        $moves = \App\Models\StockHistory::where('orderId', $orderId)->where('type', 'deduction')
+            ->where('reason', 'production')->whereIn('inventoryId', array_keys($mine))->get(['inventoryId', 'totalCost']);
+        foreach ($moves as $h) {
+            $byLine = $mine[(string) $h->inventoryId];
+            $all    = array_sum($byLine);
+            $share  = $all > 0 ? $byLine[$lineIdx] / $all : (count($byLine) === 1 ? 1.0 : 0.0);
+            $cost  += abs((float) ($h->totalCost ?? 0)) * $share;
+        }
+        return round($cost, 2);
+    }
+
+    /**
      * What one unit of a material costs now.
      *
      * First choice is the shelf itself: every batch still holding stock, at what that batch cost.
