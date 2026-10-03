@@ -617,6 +617,10 @@ export default function JobOrdersPage() {
       // A cancelled job that still owes its material count is not finished either.
       if (['Completed', 'QC_Passed'].includes(jo.joStatus)) return false;
       if (jo.joStatus === 'Cancelled' && !jo.materialsToSettle) return false;
+    } else if (statusFilter === 'Completed') {
+      // Same rule as the Completed tile: a QC-passed job is finished work. Matching 'Completed'
+      // alone showed "No job orders found" under a tile that said 36.
+      if (!['Completed', 'QC_Passed'].includes(jo.joStatus)) return false;
     } else if (statusFilter && jo.joStatus !== statusFilter) return false;
     const q = search.toLowerCase();
     return !q || prodName(jo).toLowerCase().includes(q) || (jo.joId || '').toLowerCase().includes(q) || (jo.orderId || '').toLowerCase().includes(q);
