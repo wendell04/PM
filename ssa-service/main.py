@@ -1011,6 +1011,24 @@ async def forecast(req: ForecastRequest):
         seas_daily  = np.interp(daily_ts, train_ts, seasonality)
         noise_daily = daily_rev["Value"].values - trend_daily - seas_daily
 
+        # np.interp CLAMPS outside its range rather than extrapolating, so every
+        # day before training starts would otherwise take trend[0] as a constant.
+        # That is harmless while training begins at the start of the data, and
+        # wrong the moment it does not: after a recording blackout is skipped,
+        # these three would draw a perfectly flat trend across years the model
+        # never saw, with all the real movement swept into noise. The days
+        # outside the training window get null instead - the series is still
+        # drawn there from `values`, which is real data; it is the decomposition
+        # that has nothing to say about them.
+        # None, not NaN: json.dumps writes NaN as the bare token `NaN`, which is
+        # not valid JSON and which JSON.parse rejects outright - that would take
+        # the whole response down rather than blank three series.
+        _pre = daily_ts < train_ts[0]
+
+        def _mask_pre(arr):
+            vals = [float(v) for v in arr]
+            return [None if p else v for p, v in zip(_pre, vals)] if _pre.any() else vals
+
         training_periods = len(df)
         if training_periods < 2:
             raise HTTPException(
@@ -1066,9 +1084,9 @@ async def forecast(req: ForecastRequest):
             "historical": {
                 "dates":       daily_rev["Date"].dt.strftime("%Y-%m-%d").tolist(),
                 "values":      daily_rev["Value"].tolist(),
-                "trend":       trend_daily.tolist(),
-                "seasonality": seas_daily.tolist(),
-                "noise":       noise_daily.tolist(),
+                "trend":       _mask_pre(trend_daily),
+                "seasonality": _mask_pre(seas_daily),
+                "noise":       _mask_pre(noise_daily),
             },
             # training_data: the aggregated (weekly/monthly/annual) time series
             # used for SSA — unfloored original values + decomposition at the
