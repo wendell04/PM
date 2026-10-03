@@ -644,21 +644,25 @@ function RecordsReport({ token, type }) {
 
   return (
     <>
-      <div className="rpt-noprint" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+      {/* Two rows, as on Sales: the period and what to do with it on top, the table filters under
+          it. One wrapping row pushed the three buttons onto a line of their own. */}
+      <div className="rpt-noprint" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
         <RangePicker preset={range.preset} from={range.from} to={range.to} onChange={setRange} />
-        <SearchBar value={qLive} onChange={setQLive} placeholder={cfg.search} style={{ width: isPhone ? '100%' : 230 }} />
-        {cfg.filters.map(f => (
-          <CustomSelect key={f.key} value={filters[f.key] ?? ''} onChange={v => setFilters(p => ({ ...p, [f.key]: v }))} style={{ width: isPhone ? '100%' : 165 }}
-            options={[{ value: '', label: f.all }, ...f.options.map(o => ({ value: o, label: o }))]} />
-        ))}
-        {filtered && (
-          <button type="button" onClick={() => { setFilters({}); setQLive(''); setQ(''); }} style={{ ...S.btnGhost, minHeight: 40 }}>Clear</button>
-        )}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {mayExport && (<button type="button" onClick={exportRows} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>)}
           <button type="button" onClick={() => pdf()} disabled={!data || pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>{pdfBusy ? 'Making PDF...' : 'Download PDF'}</button>
           <button type="button" onClick={() => pdf('print')} disabled={!data || pdfBusy} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
         </div>
+      </div>
+      <div className="rpt-noprint" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        <SearchBar value={qLive} onChange={setQLive} placeholder={cfg.search} style={{ width: isPhone ? '100%' : 260 }} />
+        {cfg.filters.map(f => (
+          <CustomSelect key={f.key} value={filters[f.key] ?? ''} onChange={v => setFilters(p => ({ ...p, [f.key]: v }))} style={{ width: isPhone ? '100%' : 175 }}
+            options={[{ value: '', label: f.all }, ...f.options.map(o => ({ value: o, label: o }))]} />
+        ))}
+        {filtered && (
+          <button type="button" onClick={() => { setFilters({}); setQLive(''); setQ(''); }} style={{ ...S.btnGhost, minHeight: 40 }}>Clear filters</button>
+        )}
       </div>
 
       {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: 12 }}>{error}</div>}
