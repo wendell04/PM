@@ -86,6 +86,7 @@ export default function ProductDetailPage() {
   const [reqType, setReqType] = useState('upload'); // 'upload' | 'request'
   const [customTcAccepted, setCustomTcAccepted] = useState(false);
   const [recommendations, setRecommendations] = useState([]);
+  const recoFetch = useRef(null);   // the catalogue download for the recommendations, once per page view
   const [productMongoId, setProductMongoId] = useState(null);
 
   const id = params?.id;
@@ -198,13 +199,21 @@ export default function ProductDetailPage() {
     } catch {}
     (async () => {
       try {
-        const res = await fetchWithTimeout(`${API_URL}/api/products`, {}, 10000);
-        if (!res.ok || !active) return;
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
-        try { sessionStorage.setItem('pmp_products_cache', JSON.stringify(list)); } catch {}
-        if (!hasCache && active) apply(list);
-      } catch {}
+        // One download per page view, shared by both passes of this effect. It runs once when the
+        // page opens and again when the product arrives a moment later; each pass used to start
+        // its own request, so every product page pulled the whole catalogue twice - and the full
+        // version, not the slim list the shop grid and this cache already use.
+        recoFetch.current ??= (async () => {
+          const res = await fetchWithTimeout(`${API_URL}/api/products?slim=true`, {}, 10000);
+          if (!res.ok) return null;
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+          try { sessionStorage.setItem('pmp_products_cache', JSON.stringify(list)); } catch {}
+          return list;
+        })();
+        const list = await recoFetch.current;
+        if (list && !hasCache && active) apply(list);
+      } catch { recoFetch.current = null; }
     })();
     return () => { active = false; };
     // product joins the deps because it arrives after the first pass, and it carries the ids the

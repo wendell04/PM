@@ -68,14 +68,14 @@ export default function OrderReceipt({ order }) {
       <div style={{ fontSize: 11, fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Summary</div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, marginBottom: 10 }}>
         <thead><tr style={{ background: GOLD, color: '#fff' }}>
-          <th style={{ ...th, textAlign: 'left' }}>Product</th><th style={{ ...th, textAlign: 'center' }}>Qty</th><th style={{ ...th, textAlign: 'right' }}>Price</th>
+          <th style={{ ...th, textAlign: 'left' }}>Product</th><th style={{ ...th, textAlign: 'center', whiteSpace: 'nowrap' }}>Qty</th><th style={{ ...th, textAlign: 'right', whiteSpace: 'nowrap' }}>Price</th>
         </tr></thead>
         <tbody>
           {rItems.map((i, idx) => (
             <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
               <td style={{ padding: '9px 12px', color: '#222' }}>{(i.productName || i.product_name || 'Item')}{i.variantName ? ` - ${i.variantName}` : ''}</td>
-              <td style={{ padding: '9px 12px', textAlign: 'center', color: '#222' }}>{i.qty ?? i.quantity ?? 1}</td>
-              <td style={{ padding: '9px 12px', textAlign: 'right', color: '#222' }}>{peso(i.lineTotal ?? ((i.unitPrice ?? 0) * (i.qty ?? 1)))}</td>
+              <td style={{ padding: '9px 12px', textAlign: 'center', color: '#222', whiteSpace: 'nowrap' }}>{i.qty ?? i.quantity ?? 1}</td>
+              <td style={{ padding: '9px 12px', textAlign: 'right', color: '#222', whiteSpace: 'nowrap' }}>{peso(i.lineTotal ?? ((i.unitPrice ?? 0) * (i.qty ?? 1)))}</td>
             </tr>
           ))}
         </tbody>

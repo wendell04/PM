@@ -1336,10 +1336,16 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // keep. The shop's own reasons (it cannot make it, it ran out, the payment went wrong, a duplicate)
   // are not the customer's doing and refund in full - "If the mistake is ours" in the same terms.
   const termsRefund = (() => {
-    const paid = paidSoFar(lo);
-    const designKept = lo.designFeePaid ? Number(lo.designFeePaidAmount ?? lo.designFee ?? 0) : 0;
+    // The server's figures once the settlement has loaded: it is the same sum the customer's own
+    // cancel uses, and it knows the per-line rates of a cart whose products disagree. The local sum
+    // is only the stand-in until then. The deposit is a share of the goods, not of a design fee
+    // that was paid on its own - taking it from the gross total kept more than was ever charged.
+    const st = settlement?.terms;
+    const paid = st ? Number(st.paid) : paidSoFar(lo);
+    const designKept = st ? Number(st.designKept) : (lo.designFeePaid ? Number(lo.designFeePaidAmount ?? lo.designFee ?? 0) : 0);
     const pct = lo.requiresDownpayment ? Number(lo.downpaymentPercent ?? 0) : 0;
-    const deposit = pct > 0 ? Math.round(Number(lo.totalAmount ?? lo.totalPrice ?? 0) * pct) / 100 : 0;
+    const goods = Math.max(0, Number(lo.totalAmount ?? lo.totalPrice ?? 0) - designKept);
+    const deposit = st ? Number(st.deposit) : (pct > 0 ? Math.round(goods * pct) / 100 : 0);
     const shopSide = ['Cannot fulfil', 'Out of stock', 'Payment problem', 'Duplicate order'].includes(cancelReason);
     const keep = shopSide ? 0 : Math.min(paid, deposit + designKept);
     return { paid, keep, refund: Math.max(0, Math.round((paid - keep) * 100) / 100), deposit, designKept, shopSide };

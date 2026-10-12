@@ -9,7 +9,7 @@ import { billingName } from '@/lib/billingName';
 import { fetchMyShopOrders, fetchMyShopOrder } from '@/lib/orderTrackingApi';
 import { orderNo } from '@/lib/orderNumber';
 import { StatusBadge, humanizeStatus, formatDate, formatPeso } from '@/lib/shopUtils';
-import { remainingDue, goodsPaid } from '@/lib/orderBalance';
+import { remainingDue, goodsPaid, paidSoFar, cancelPreview } from '@/lib/orderBalance';
 import { getEcho } from '@/lib/echo';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
@@ -232,9 +232,13 @@ const STATUS_ACCENT = {
  * cancellation. Shared by both trackers: the custom one had its own banner and said only
  * "This order was cancelled." on every custom order.
  */
-function CancelDetails({ cancelledBy, cancelledReason, refundOwed, refunds }) {
+function CancelDetails({ cancelledBy, cancelledReason, refundOwed, refunds, paid = 0 }) {
   const sent = (refunds || []).filter(r => r.status === 'paid' || r.status === 'sent').reduce((t, r) => t + Number(r.amount || 0), 0);
   const owed = Number(refundOwed || 0);
+  // What was paid and is not coming back: the downpayment and any design fee, under the terms
+  // ticked at checkout. Left unsaid, a customer who paid and cancelled saw no money line at all
+  // and could only guess whether a refund had been forgotten.
+  const kept = Math.max(0, Math.round((Number(paid || 0) - owed - sent) * 100) / 100);
   const peso = (n) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
   return (
     <>
@@ -244,11 +248,12 @@ function CancelDetails({ cancelledBy, cancelledReason, refundOwed, refunds }) {
       </div>
       {owed > 0 && <div style={{ fontSize: '0.78rem', color: 'var(--white)', marginTop: '4px', fontWeight: 600 }}>Refund of {peso(owed)} is being arranged - it goes back to the payment method you used.</div>}
       {owed <= 0 && sent > 0 && <div style={{ fontSize: '0.78rem', color: 'var(--white)', marginTop: '4px', fontWeight: 600 }}>{peso(sent)} was refunded to you.</div>}
+      {kept > 0 && cancelledBy !== 'admin' && <div style={{ fontSize: '0.74rem', color: 'var(--gray)', marginTop: '4px' }}>{peso(kept)} is not refunded: under the order terms the downpayment and any design fee stay with the shop.</div>}
     </>
   );
 }
 
-function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = [], items = [], productionJobs = [], cancelledBy = null, cancelledReason = null, refundOwed = 0, refunds = [] }) {
+function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = [], items = [], productionJobs = [], cancelledBy = null, cancelledReason = null, refundOwed = 0, refunds = [], paid = 0 }) {
   const historyMap = {};
   (statusHistory || []).forEach(e => { if (e?.status && e?.at) historyMap[e.status] = e.at; });
 
@@ -277,7 +282,7 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
         <div>
           <div style={{ fontSize: '0.875rem', fontWeight: 700, color: isCancelled ? '#ef4444' : '#f97316' }}>Order {status}</div>
           {isCancelled
-            ? <CancelDetails cancelledBy={cancelledBy} cancelledReason={cancelledReason} refundOwed={refundOwed} refunds={refunds} />
+            ? <CancelDetails cancelledBy={cancelledBy} cancelledReason={cancelledReason} refundOwed={refundOwed} refunds={refunds} paid={paid} />
             : <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '2px' }}>This order was returned.</div>}
         </div>
       </div>
@@ -586,7 +591,7 @@ const holdEnded = (o) => !!o && (o.paymentStatus ?? 'unpaid') === 'unpaid' && !!
   && !['cancelled', 'Cancelled', 'returned', 'Returned'].includes(o.orderStatus);
 
 export default function OrdersHistoryPage() {
-  const { token, currentUser } = useAuth();
+  const { token, currentUser, isLoading: authLoading } = useAuth();
   const { addToCart } = useCart();
   const router = useRouter();
 
@@ -1205,8 +1210,22 @@ export default function OrdersHistoryPage() {
           </div>
         )}
 
+        {/* Signed out. This used to fall through to "No orders yet", which tells a customer with
+            ten orders that they have none - the bottom bar's My Orders is one tap from anywhere. */}
+        {!loading && !error && !authLoading && !token && (
+          <div style={{ textAlign: 'center', padding: '5rem 1.5rem', border: '1px dashed rgba(212,168,67,0.15)', borderRadius: '16px', background: 'rgba(212,168,67,0.02)' }}>
+            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--white)', marginBottom: '8px' }}>Sign in to see your orders</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '24px', lineHeight: 1.6 }}>Your orders, proofs and receipts are kept on your account.</div>
+            <button type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: '/shop/orders-history' } }))}
+              style={{ padding: '10px 24px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: '#000', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+              Sign in
+            </button>
+          </div>
+        )}
+
         {/* No orders at all */}
-        {!loading && !error && orders.length === 0 && (
+        {!loading && !error && token && orders.length === 0 && (
           <div style={{ textAlign: 'center', padding: '5rem 1.5rem', border: '1px dashed rgba(212,168,67,0.15)', borderRadius: '16px', background: 'rgba(212,168,67,0.02)' }}>
             <div style={{ width: '72px', height: '72px', borderRadius: '50%', margin: '0 auto 20px', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="rgba(212,168,67,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
@@ -1544,11 +1563,11 @@ export default function OrdersHistoryPage() {
                     <div style={{ paddingBottom: '4px' }}>
                       {selectedOrder.isCustomOrder ? (
                         <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} paymentStatus={selectedOrder.paymentStatus} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs} quoted={quotedArtwork(selectedOrder)}
-                          cancel={{ cancelledBy: selectedOrder.cancelledBy, cancelledReason: selectedOrder.cancelledReason, refundOwed: selectedOrder.refundOwed, refunds: selectedOrder.refunds }}
+                          cancel={{ cancelledBy: selectedOrder.cancelledBy, cancelledReason: selectedOrder.cancelledReason, refundOwed: selectedOrder.refundOwed, refunds: selectedOrder.refunds, paid: paidSoFar(selectedOrder) }}
                           holdOver={holdEnded(selectedOrder)} />
                       ) : (
                         <OrderTracker status={selectedOrder.orderStatus} paymentMethod={selectedOrder.paymentMethod} paymentStatus={selectedOrder.paymentStatus} statusHistory={selectedOrder.statusHistory} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs}
-                          cancelledBy={selectedOrder.cancelledBy} cancelledReason={selectedOrder.cancelledReason} refundOwed={selectedOrder.refundOwed} refunds={selectedOrder.refunds} />
+                          cancelledBy={selectedOrder.cancelledBy} cancelledReason={selectedOrder.cancelledReason} refundOwed={selectedOrder.refundOwed} refunds={selectedOrder.refunds} paid={paidSoFar(selectedOrder)} />
                       )}
                     </div>
 
@@ -2762,9 +2781,23 @@ export default function OrdersHistoryPage() {
               </div>
             </div>
             <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-              {cancelTarget?.requiresDownpayment && cancelTarget?.downPayment > 0
-                ? 'This action cannot be undone. The order will be cancelled. Note: down payments are non-refundable.'
-                : 'This action cannot be undone. The order will be cancelled.'}
+              This cannot be undone.
+              {/* The amounts, before the button rather than after it. "Down payments are
+                  non-refundable" told someone who had paid in full nothing about the other half. */}
+              {(() => {
+                const t = cancelPreview(cancelTarget);
+                if (t.paid <= 0) return null;
+                const peso = (n) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+                if (t.refund == null) return ' Under the order terms the downpayment stays with the shop, and anything you paid above it is refunded.';
+                const keptParts = [t.depositKept > 0 ? `the ${peso(t.depositKept)} downpayment` : '', t.designKept > 0 ? `the ${peso(t.designKept)} design fee` : ''].filter(Boolean);
+                return (
+                  <>
+                    {' '}You paid <strong style={{ color: 'var(--white)' }}>{peso(t.paid)}</strong>.
+                    {keptParts.length > 0 && <> Under the order terms, {keptParts.join(' and ')} {keptParts.length > 1 ? 'are' : 'is'} not refunded.</>}
+                    {t.refund > 0 && <> <strong style={{ color: 'var(--white)' }}>{peso(t.refund)}</strong> goes back to the payment method you used.</>}
+                  </>
+                );
+              })()}
             </p>
             {/* Why someone cancelled is the only thing that separates a pricing problem from a
                 delivery-time problem from a change of mind. Required, because an optional box on a

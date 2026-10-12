@@ -21,25 +21,33 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
  */
 export default function ReceiptPage() {
   const { id }    = useParams();
-  const { token } = useAuth();
+  const { token, currentUser, isLoading: authLoading } = useAuth();
 
   const [order,   setOrder]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || authLoading) return;
+    // Signed out: the receipt belongs to an account. Say so, rather than "could not find that order".
+    if (!token) { setError('Sign in to see this receipt.'); setLoading(false); return; }
     let dropped = false;
+    setLoading(true); setError('');
     (async () => {
       try {
+        // The customer's own order, from the customer's route. This page asked the shop-side route,
+        // which refuses every customer - so the "View receipt" link in the payment email opened
+        // "we could not find that order" for the one person it was sent to. Staff opening a
+        // customer's receipt still go through the shop-side route.
+        const mine = !currentUser || (currentUser.role ?? 'customer') === 'customer';
         const res = await fetchWithTimeout(
-          `${API_URL}/api/orders/${id}`,
-          { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+          `${API_URL}/api/orders/${mine ? 'my/' : ''}${id}`,
+          { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
           20000,
         );
         const d = await res.json().catch(() => ({}));
         if (dropped) return;
-        if (!res.ok) throw new Error(d.message || 'We could not find that order.');
+        if (!res.ok) throw new Error(res.status === 404 || res.status === 403 ? 'We could not find that order on this account.' : (d.message || 'We could not load this receipt.'));
         setOrder(d.data ?? d);
       } catch (e) {
         if (!dropped) setError(e.message || 'We could not load this receipt.');
@@ -48,7 +56,7 @@ export default function ReceiptPage() {
       }
     })();
     return () => { dropped = true; };
-  }, [id, token]);
+  }, [id, token, currentUser?.role, authLoading]);
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '2rem 1rem 3rem' }}>
@@ -69,7 +77,7 @@ export default function ReceiptPage() {
       {error && !loading && <p style={{ color: '#b45309', fontSize: '.9rem' }}>{error}</p>}
 
       {order && (
-        <div style={{ background: '#ffffff', borderRadius: 12, padding: '28px 30px', boxShadow: '0 2px 18px rgba(0,0,0,0.12)' }}>
+        <div style={{ background: '#ffffff', borderRadius: 12, padding: 'clamp(18px, 5vw, 28px) clamp(14px, 4.5vw, 30px)', boxShadow: '0 2px 18px rgba(0,0,0,0.12)' }}>
           <OrderReceipt order={order} />
         </div>
       )}

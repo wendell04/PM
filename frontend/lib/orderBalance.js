@@ -34,6 +34,35 @@ export function remainingDue(order) {
   return Math.max(0, Math.round((orderTotal(order) - paidSoFar(order)) * 100) / 100);
 }
 
+/**
+ * What cancelling would do to the money, under the order terms: the shop keeps the downpayment and
+ * a paid design fee, and everything above that goes back. Mirrors OrderController::cancelTerms, which
+ * is the figure that is actually recorded - this one only lets the cancel dialog say it beforehand.
+ * `deposit` is null when the order's lines disagree on the rate; the server works that case out.
+ */
+export function cancelPreview(order) {
+  const paid = paidSoFar(order);
+  const designKept = Math.min(paid, order?.designFeePaid ? (Number(order?.designFeePaidAmount ?? order?.designFee) || 0) : 0);
+  const goodsPaid = Math.max(0, paid - designKept);
+  const pct = Number(order?.downpaymentPercent ?? 0) || 0;
+  let deposit = 0;
+  // On a quotation order `requiresDownpayment` only says a balance is still open, so one paid in
+  // full reads false while its deposit rate is still on the order.
+  const isQuote = !!order?.orderRequestId || order?.orderSource === 'inquiry';
+  if (order?.requiresDownpayment || (isQuote && pct > 0)) {
+    if (pct > 0) deposit = Math.round(Math.max(0, orderTotal(order) - designKept) * Math.min(pct, 100)) / 100;
+    else deposit = null;
+  }
+  const depositKept = deposit == null ? null : Math.min(goodsPaid, deposit);
+  const round = (n) => Math.round(n * 100) / 100;
+  return {
+    paid: round(paid),
+    designKept: round(designKept),
+    depositKept: depositKept == null ? null : round(depositKept),
+    refund: depositKept == null ? null : round(Math.max(0, goodsPaid - depositKept)),
+  };
+}
+
 /** The deposit share of what is still owed, not of the gross total - the customer should not be
  *  asked for a percentage of money they have already handed over. */
 export function depositDue(order) {

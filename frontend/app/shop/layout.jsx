@@ -991,7 +991,9 @@ export default function ShopLayout({ children }) {
   // the rest (and marks the body, so the chat head and the tab bar step aside too).
   useLockBodyScroll(cartOpen || notifOpen);
 
-  // The search box is ~160px on a phone, where the long placeholder was cut to "Search p".
+  // The search box is ~160px on a phone, where the long placeholder was cut to "Search p" - and
+  // narrower again once signed in (the bell and the account button take room), where even
+  // "Search products" was cut to "Search pro". One word fits both; the full label is the aria-label.
   const [narrowNav, setNarrowNav] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 640px)');
@@ -1305,7 +1307,7 @@ export default function ShopLayout({ children }) {
                   ref={searchRef}
                   type="text"
                   className="shop-navbar-search-input"
-                  placeholder={narrowNav ? 'Search products' : 'Search products, then press Enter'}
+                  placeholder={narrowNav ? 'Search' : 'Search products, then press Enter'}
                   value={searchQuery}
                   onChange={e => { handleSearchChange(e); setSearchOpen(true); setSearchHi(-1); }}
                   onFocus={() => { setSearchFocused(true); setSearchOpen(true); loadSearchIndex(); }}
