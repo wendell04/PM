@@ -230,7 +230,7 @@ export default function AuditLogsPage() {
 
   return (
     <ErrorBoundary>
-      <div style={{ ...S.page, padding: '24px' }}>
+      <div style={S.page}>
 
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>

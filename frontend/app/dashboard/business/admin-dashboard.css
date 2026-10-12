@@ -241,9 +241,49 @@ input[type="number"] {
   padding: 0.75rem 1rem 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 2px;
   overflow-y: auto;
 }
+
+/* ── Sections that open and close ──
+   The headings were labels over one long list. They are buttons now: the section the person is
+   in is open, the rest are folded to their heading, and the whole menu fits the rail without
+   scrolling. Gold marks the heading of the section the current page belongs to, so a folded
+   section still says "you are in here". */
+.sidebar-sec { display: flex; flex-direction: column; }
+.sidebar-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 34px;
+  margin-top: 4px;
+  padding: 0 0.75rem 0 1rem;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--gray);
+  text-align: left;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.sidebar-sec-head > span { flex: 1; }
+.sidebar-sec-head:hover { background: rgba(212, 168, 67, 0.08); color: var(--white); }
+.sidebar-sec-head:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.sidebar-sec-head.has-here { color: var(--gold); }
+.sidebar-sec-chevron { flex-shrink: 0; opacity: 0.7; transition: transform 0.18s ease; }
+.sidebar-sec-head[aria-expanded="true"] .sidebar-sec-chevron { transform: rotate(180deg); }
+.sidebar-sec-items { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 6px; }
+/* The icon-only rail keeps every module listed and has no room for a heading. */
+.admin-sidebar.collapsed .sidebar-sec-head { display: none; }
+.admin-sidebar.collapsed .sidebar-sec-items { padding: 0; }
+@media (prefers-reduced-motion: reduce) { .sidebar-sec-chevron { transition: none; } }
 
 /* The nav used to hide its scrollbar, which is fine until the wheel stops working - then there is
    nothing left to drag and the lower half of the menu is unreachable. A slim slider costs a few
@@ -4314,6 +4354,10 @@ html.light .skeleton-table-header {
 @media (max-width: 480px) {
   .top-bar-username { display: none; }
   .top-bar-user { padding-inline: 6px; gap: 4px; }
+  /* The divider and the little arrow beside the avatar go too: about 30px, which is the
+     difference between "Quality C..." and "Quality Control" in the page name. */
+  .top-bar-divider { display: none; }
+  .top-bar-user > svg { display: none; }
 }
 
 /* ─── One table, two shapes ─────────────────────────────────────────────────

@@ -408,7 +408,7 @@ export default function OrderRequestsPage() {
 
   if (isLoading) {
     return (
-      <div style={{ ...S.page, padding: '24px' }}>
+      <div style={S.page}>
         <style>{`
           @keyframes pmPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
         `}</style>
@@ -431,7 +431,7 @@ export default function OrderRequestsPage() {
 
   return (
     <ErrorBoundary>
-    <div style={{ ...S.page, padding: '24px' }}>
+    <div style={S.page}>
       {pickCustomer && (
         <CustomerPicker
           token={token}

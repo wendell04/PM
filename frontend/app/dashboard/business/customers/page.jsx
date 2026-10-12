@@ -139,7 +139,7 @@ export default function CustomersPage() {
 
   return (
     <ErrorBoundary>
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
 
         {/* Summary stats - the same SummaryCard every other module uses. `S` also names the
             shadowing hazard this block had: the map parameter was `s`, which is the shared style

@@ -294,7 +294,7 @@ export default function ToBuyPage() {
   };
 
   return (
-    <div style={{ ...S.page, padding: '24px' }}>
+    <div style={S.page}>
       <ToastContainer toasts={toasts} dismiss={dismiss} />
       {inv && (
         <StockInTab modalOnly prefill={receive}

@@ -766,6 +766,29 @@ export default function BusinessDashboardLayout({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, currentTab, currentUser, permissions, isAdminOwner]);
 
+  // ── Sidebar sections ──
+  // The menu was one list of 27 modules under seven labels: about 1,600px in a rail that shows 780,
+  // so Finance, Users and Admin were always below the fold. The labels are headings that open and
+  // close now, and the rail shows the section the person is in. Which item is "here" is the same
+  // test the phone strip uses: a plain path, or a path plus its ?tab= family.
+  const navIsHere = (item) => (item.matchTabs && currentTab && item.matchTabs.includes(currentTab))
+    || pathname === item.href
+    || (pathname + (currentTab ? `?tab=${currentTab}` : "")) === item.href;
+  const activeNavSection = (() => {
+    let label = "";
+    for (const item of navItems) {
+      if (item.type === "divider") { label = item.label; continue; }
+      if (item.href && navIsHere(item)) return label;
+    }
+    return "";
+  })();
+  // Open sections. Arriving in a section opens it and folds the others away; a heading the person
+  // opens by hand stays open until they move to another section.
+  const [openNavSections, setOpenNavSections] = useState({});
+  useEffect(() => {
+    setOpenNavSections(activeNavSection ? { [activeNavSection]: true } : {});
+  }, [activeNavSection]);
+
 
   const getInitials = (user) => {
     if (!user) return "?";
@@ -1123,43 +1146,52 @@ export default function BusinessDashboardLayout({ children }) {
             {(() => {
               // A module the role cannot open is not shown at all. Greying it with a padlock
               // advertised every screen a person was kept out of, which is noise for them and a
-              // map of the shop for anyone looking over their shoulder. Section headers go with
-              // their last item.
-              const visible = navItems.filter((item) => item.type === "divider" || itemAccessible(item));
-              return visible.filter((item, i) => {
-                if (item.type !== "divider") return true;
-                const next = visible[i + 1];
-                return next && next.type !== "divider";
-              });
-            })()
-              .map((item) => {
-                if (item.type === "divider") {
-                  return (
-                    <div key={`divider-${item.label}`} className="sidebar-divider-label">
-                      {item.label}
-                    </div>
-                  );
-                }
+              // map of the shop for anyone looking over their shoulder. A section with nothing
+              // left in it is not shown either.
+              const sections = [];
+              let cur = null;
+              for (const item of navItems) {
+                if (item.type === "divider") { cur = { label: item.label, items: [] }; sections.push(cur); continue; }
+                if (!cur) { cur = { label: "", items: [] }; sections.push(cur); }
+                if (itemAccessible(item)) cur.items.push(item);
+              }
 
-                const navIcon = item.icon ? (
-                  <svg className="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d={item.icon} />
-                  </svg>
-                ) : null;
-
-
-                const fullHref = pathname + (currentTab ? `?tab=${currentTab}` : '');
-                const isActive = (item.matchTabs && currentTab && item.matchTabs.includes(currentTab))
-                  || pathname === item.href
-                  || fullHref === item.href;
-
+              const renderItem = (item) => {
+                const isActive = navIsHere(item);
                 return (
                   <Link key={item.name} href={item.href} className={`sidebar-nav-item ${isActive ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
-                    {navIcon}
+                    {item.icon ? (
+                      <svg className="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d={item.icon} />
+                      </svg>
+                    ) : null}
                     <span className="nav-text">{item.name}</span>
                   </Link>
                 );
-              })}
+              };
+
+              return sections.filter((sec) => sec.items.length > 0).map((sec) => {
+                // Home sits above the sections, on its own.
+                if (!sec.label) return sec.items.map(renderItem);
+                const hasHere = sec.label === activeNavSection;
+                // The icon-only rail has no headings to click, so everything stays listed there.
+                const open = sidebarCollapsed || !!openNavSections[sec.label];
+                return (
+                  <div key={`sec-${sec.label}`} className="sidebar-sec">
+                    <button type="button"
+                      className={`sidebar-sec-head${hasHere ? " has-here" : ""}`}
+                      aria-expanded={open}
+                      onClick={() => setOpenNavSections((s) => ({ ...s, [sec.label]: !s[sec.label] }))}>
+                      <span>{sec.label}</span>
+                      <svg className="sidebar-sec-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M6 9l6 6 6-6" />
+                      </svg>
+                    </button>
+                    {open && <div className="sidebar-sec-items">{sec.items.map(renderItem)}</div>}
+                  </div>
+                );
+              });
+            })()}
           </nav>
 
           {/* The storefront link lives in the top bar, beside the theme and the bell. It was in

@@ -59,6 +59,9 @@ export default function InventoryV2() {
   const [categories, setCategories] = useState(INIT_CATEGORIES);
   const [units,      setUnits]      = useState(INIT_UNITS);
   const [loading,    setLoading]    = useState(true);
+  // The first load failed for at least one list. Shown above the tabs, so zeros that mean "this did
+  // not arrive" are not read as "there is nothing".
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     const t = searchParams.get('tab');
@@ -91,6 +94,7 @@ export default function InventoryV2() {
     }));
     const failed = results.find(r => r.status === 'rejected');
     if (failed) toast(failed.reason?.message ?? 'Some data failed to load.', 'error');
+    if (keys.includes('all')) setLoadFailed(!!failed);
   }, [token, toast]);
 
   useEffect(() => {
@@ -120,7 +124,38 @@ export default function InventoryV2() {
         }} />
       </div>
 
-      {tab === 'materials'  && (
+      {/* While the first load is in flight. `loading` was tracked and never shown, so every tab drew
+          its empty state first - "Total materials 0", "No materials found" - and then jumped to
+          the real figures; on a slow connection that is several seconds of being told the shelves
+          are empty. */}
+      {loading && (
+        <div aria-busy="true" aria-label="Loading inventory" style={{ display:'grid', gap:'12px' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:'12px' }}>
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} style={{ ...S.card, padding:'16px' }}>
+                <div className="skeleton-line" style={{ width:'55%', marginBottom:'12px' }} />
+                <div className="skeleton-line" style={{ width:'30%', height:'22px' }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ ...S.card, padding:'16px', display:'grid', gap:'14px' }}>
+            {[92, 84, 88, 76, 81, 68].map((w, i) => <div key={i} className="skeleton-line" style={{ width:`${w}%` }} />)}
+          </div>
+        </div>
+      )}
+      {!loading && loadFailed && (
+        <div role="alert" style={{ marginBottom:'14px', padding:'10px 14px', borderRadius:'8px', fontSize:'13px',
+          background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.3)', color:'var(--white)',
+          display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
+          <span>Some of the inventory did not load, so the figures below may be incomplete.</span>
+          <button type="button" onClick={() => { setLoading(true); refresh(['all']).finally(() => setLoading(false)); }}
+            style={{ padding:'6px 14px', borderRadius:'6px', border:'1px solid var(--border)', background:'none', color:'var(--white)', fontWeight:600, fontSize:'12.5px', cursor:'pointer', fontFamily:'inherit' }}>
+            Try again
+          </button>
+        </div>
+      )}
+
+      {!loading && tab === 'materials'  && (
         <MaterialsTab
           materials={materials} setMaterials={setMaterials}
           vendors={vendors} setVendors={setVendors}
@@ -131,7 +166,7 @@ export default function InventoryV2() {
           token={token} onRefresh={refresh} toast={toast}
         />
       )}
-      {tab === 'vendors'    && (
+      {!loading && tab === 'vendors'    && (
         <VendorsTab
           vendors={vendors} setVendors={setVendors}
           materials={materials}
@@ -140,14 +175,14 @@ export default function InventoryV2() {
           token={token} onRefresh={refresh} toast={toast}
         />
       )}
-      {tab === 'productstock' && (
+      {!loading && tab === 'productstock' && (
         <ProductStockTab
           boms={boms}
           materials={materials}
           products={products}
         />
       )}
-      {tab === 'bom'        && (
+      {!loading && tab === 'bom'        && (
         <ProductCreationTab
           boms={boms} setBoms={setBoms}
           products={products}
@@ -156,7 +191,7 @@ export default function InventoryV2() {
           token={token} onRefresh={refresh} toast={toast}
         />
       )}
-      {tab === 'stockin'    && (
+      {!loading && tab === 'stockin'    && (
         <StockInTab
           materials={materials}
           vendors={vendors}
@@ -166,14 +201,14 @@ export default function InventoryV2() {
           toast={toast}
         />
       )}
-      {tab === 'goods'      && (
+      {!loading && tab === 'goods'      && (
         <GoodsStockTab
           materials={materials}
           batches={batches}
           badOrders={badOrders}
         />
       )}
-      {tab === 'actual'     && (
+      {!loading && tab === 'actual'     && (
         <ActualStockTab
           materials={materials}
           batches={batches}     setBatches={setBatches}
@@ -183,13 +218,13 @@ export default function InventoryV2() {
           toast={toast}
         />
       )}
-      {tab === 'stockout'   && (
+      {!loading && tab === 'stockout'   && (
         <StockOutHistoryTab
           stockOuts={stockOuts}
           materials={materials}
         />
       )}
-      {tab === 'badorders'  && (
+      {!loading && tab === 'badorders'  && (
         <BadOrdersTab
           badOrders={badOrders} setBadOrders={setBadOrders}
           materials={materials}

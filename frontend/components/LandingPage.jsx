@@ -67,9 +67,10 @@ function cmsCta(label, link) {
   return { label, href: link || '#' };
 }
 
-// mobileV2 is the owner's "New phone layout" switch (Homepage editor). Off renders exactly the
-// layout that shipped before it; every style it turns on lives under .lp-m2 and phone widths only.
-const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=[], mobileV2=false}) => {
+// The phone layout is the .lp-m2 rules in custom-styles.css (phone widths only). It was an owner
+// switch with the older layout behind it; two phone layouts meant one of them was always the one
+// nobody was looking at, and it broke unnoticed. There is one now.
+const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=[]}) => {
   const router = useRouter();
   const { currentUser: user, token, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -201,12 +202,12 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const reviewsMaxIdx = reviewsPages - 1;
 
   useEffect(() => {
-    // A review card needs about 300px to read: one on a phone, two on a tablet, three on a desktop.
-    const calc = () => setReviewsPerView(window.innerWidth <= 700 ? (mobileV2 ? 2 : 1) : window.innerWidth <= 1023 ? 2 : 3);
+    // Two a page on a phone (stacked, see .lp-m2 .reviews-track), two on a tablet, three on a desktop.
+    const calc = () => setReviewsPerView(window.innerWidth <= 1023 ? 2 : 3);
     calc();
     window.addEventListener('resize', calc);
     return () => window.removeEventListener('resize', calc);
-  }, [mobileV2]);
+  }, []);
 
   // Rotating the page does not change how many reviews there are, but it changes how many fit -
   // and an index left past the end shows an empty track.
@@ -227,8 +228,8 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [registrationTerms, setRegistrationTerms] = useState(DEFAULT_REGISTRATION_TERMS);
   // FAQ accordion
   const [openFaq, setOpenFaq] = useState(null);
-  // Phones show the first four questions; the rest are one tap away. Desktop and the old phone
-  // layout always show all six - the cap and the button only exist under .lp-m2.
+  // Phones show the first four questions; the rest are one tap away. Desktop always shows all
+  // six - the cap and the button only exist at phone widths.
   const [faqAll, setFaqAll] = useState(false);
   // CMS pricing settings: which categories show, their order and notes (prices come from the catalogue)
   const [pricingContent, setPricingContent] = useState(null);
@@ -1425,7 +1426,7 @@ const handleForgotResetPassword = async () => {
 
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
-    <div className={mobileV2 ? 'lp-root lp-m2' : 'lp-root'}>
+    <div className="lp-root lp-m2">
       {/* NAVBAR */}
       <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="container">

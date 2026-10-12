@@ -13,13 +13,10 @@ async function fetchJSON(url) {
 }
 
 export default async function Index() {
-  // The phone-layout switch is read here, not in the browser, so the page never paints the old
-  // layout first and swap. Off (or unreachable) keeps the layout that shipped before it.
-  const [products, collections, reviews, layout] = await Promise.all([
+  const [products, collections, reviews] = await Promise.all([
     fetchJSON(`${BACKEND_URL}/api/products?slim=true`),
     fetchJSON(`${BACKEND_URL}/api/storefront/collections`),
     fetchJSON(`${BACKEND_URL}/api/storefront/reviews?limit=12`),
-    fetchJSON(`${BACKEND_URL}/api/storefront/content/homepage_layout`),
   ]);
 
   return (
@@ -27,7 +24,6 @@ export default async function Index() {
       initialProducts={products?.data ?? []}
       initialCollections={collections?.data ?? []}
       initialReviews={reviews?.data?.reviews ?? []}
-      mobileV2={layout?.data?.mobileV2 === true}
     />
   );
 }

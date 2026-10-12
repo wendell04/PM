@@ -724,7 +724,9 @@ export default function BannerManagementPage() {
     )}
     <div className="banner-management-container">
       <style jsx>{`
-        .banner-management-container { padding: 24px; background: var(--black); min-height: 100vh; }
+        /* No padding of its own: the dashboard already pads every page, and 24px on top of that
+           put this page's edge 24px inside every other page's. */
+        .banner-management-container { background: var(--black); min-height: 100vh; }
 
         .banner-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
         .banner-actions { display: flex; gap: 0.75rem; }
@@ -735,9 +737,11 @@ export default function BannerManagementPage() {
         .banner-btn-primary:hover { filter: brightness(1.05); }
         .banner-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-        .banner-grid { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; }
-        .banner-left-column { display: flex; flex-direction: column; gap: 1.5rem; }
-        .banner-right-column { display: flex; flex-direction: column; gap: 1.5rem; }
+        /* minmax(0, 1fr) and min-width: 0 - a bare 1fr column is as wide as its widest child, so on a
+           phone the queue and the upload box ran off the right edge of the screen. */
+        .banner-grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 1.5rem; }
+        .banner-left-column { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+        .banner-right-column { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
 
         .banner-card { background: var(--dark); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
         .banner-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
@@ -903,8 +907,8 @@ export default function BannerManagementPage() {
         .banner-modal-btn-danger:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3); }
 
         @media (max-width: 1024px) {
-          .banner-grid { grid-template-columns: 1fr; }
-          .banner-editor-grid { grid-template-columns: 1fr; }
+          .banner-grid { grid-template-columns: minmax(0, 1fr); }
+          .banner-editor-grid { grid-template-columns: minmax(0, 1fr); }
         }
       `}</style>
 

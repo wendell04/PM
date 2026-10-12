@@ -136,7 +136,7 @@ function PromotionsInner() {
   return (
     // The 1200px cap left a wide screen mostly empty while every other module runs full
     // width; the tab strip was a third underline-tab implementation.
-    <div style={{ ...S.page, padding: '24px' }}>
+    <div style={S.page}>
       <div style={{ marginBottom: '18px' }}>
         <TabBar
           tabs={[

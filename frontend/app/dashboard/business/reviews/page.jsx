@@ -140,7 +140,7 @@ export default function AdminReviewsPage() {
   ];
 
   return (
-    <div style={{ ...S.page, padding: '24px' }}>
+    <div style={S.page}>
 
       <div style={{ ...S.row, marginBottom: '18px' }}>
         <SummaryCard label="Total reviews" value={stats?.total ?? '-'} accent />

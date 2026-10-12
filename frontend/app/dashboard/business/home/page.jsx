@@ -30,6 +30,7 @@ import { S, ICONS, SummaryCard, EmptyState, Note } from '../inventory-v2/shared'
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
 import { orderNo } from '@/lib/orderNumber';
 import { statusLabel, statusColor, stageOf } from '@/lib/orderStatus';
+import { getStatusBadge } from '@/lib/utils/orderHelpers';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:8001';
@@ -349,6 +350,12 @@ export default function StaffHome() {
     };
   }, [orders]);
 
+  // Whether this person is sent order amounts at all. The server strips totals and payments from
+  // every order for someone with none of these (OrderController::stripOrderFinancials), and with
+  // no totals every order looks settled: the counter then said "Balances due: 0" to a person who
+  // simply was not shown the money. A figure they cannot see is left out instead of shown as zero.
+  const seesMoney = allows(['payments', 'sales', 'pos', 'orders.money']);
+
   // The counter.
   const desk = useMemo(() => {
     const st = (o) => String(o.orderStatus ?? '').toLowerCase().replace(/[\s-]+/g, '_');
@@ -603,7 +610,7 @@ export default function StaffHome() {
     : { bg: 'rgba(212,168,67,0.07)', bd: 'rgba(212,168,67,0.28)', fg: 'var(--gold)' };
 
   return (
-    <div style={{ ...S.page, padding: '24px' }}>
+    <div style={S.page}>
 
       <div style={{ ...S.rowBetween, marginBottom: '18px' }}>
         <div>
@@ -613,7 +620,7 @@ export default function StaffHome() {
           <div style={{ fontSize: '12.5px', color: 'var(--gray)', marginTop: 2 }}>
             {profile === 'production' ? 'Your bench today - what is due, what is late, what is waiting on QC.'
               : profile === 'designer' ? 'Your drawing board - files to check, proofs to draft, and who is still deciding.'
-              : profile === 'frontdesk' ? 'The counter - who still owes, and what is ready to go out.'
+              : profile === 'frontdesk' ? (seesMoney ? 'The counter - who still owes, and what is ready to go out.' : 'The counter - what is ready to go out.')
               : profile === 'inventory' ? 'The shelves - what to buy, and what is running low.'
               : blocked.length === 0
                 ? ''
@@ -680,7 +687,7 @@ export default function StaffHome() {
           )}
           {profile === 'frontdesk' && (
             <div style={{ ...S.row, marginBottom: '18px' }}>
-              <SummaryCard label="Balances due" value={desk.balancesDue.length} accent color={desk.balancesDue.length ? 'var(--gold)' : 'var(--white)'} sub="Live orders that still owe" />
+              {seesMoney && <SummaryCard label="Balances due" value={desk.balancesDue.length} accent color={desk.balancesDue.length ? 'var(--gold)' : 'var(--white)'} sub="Live orders that still owe" />}
               <SummaryCard label="Ready to go out" value={desk.toRelease.length} sub="Finished and waiting for hand-over or courier" />
               {allows('pos') && (
                 <div onClick={() => router.push('/dashboard/business/pos')} style={{ ...S.cardSm, flex: 1, minWidth: '140px', cursor: 'pointer' }}>
@@ -884,7 +891,7 @@ export default function StaffHome() {
                     </span>
                     {(() => { const c = statusColor(o.orderStatus ?? o.status); return (
                       <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
-                        color: c.color, background: c.bg, border: `1px solid ${c.border}` }}>{statusLabel(o.orderStatus ?? o.status)}</span>
+                        color: c.color, background: c.bg, border: `1px solid ${c.border}` }}>{getStatusBadge(o.orderStatus ?? o.status).label || statusLabel(o.orderStatus ?? o.status)}</span>
                     ); })()}
                     <span style={{ minWidth: 86, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{peso(o.totalAmount)}</span>
                   </div>
