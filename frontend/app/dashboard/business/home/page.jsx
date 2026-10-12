@@ -214,11 +214,15 @@ export default function StaffHome() {
       href: '/dashboard/business/orders', tone: 'bad',
     });
 
-    const owed = open.filter(o => Number(o.refundOwed ?? 0) > 0);
+    // Every order, not only the open ones. A refund is owed almost always BECAUSE an order was
+    // cancelled, and this looked only at orders that were not cancelled - so the one alert that
+    // tells the shop it has money to send back never showed the usual case. The link opens Orders
+    // on exactly these, since the default list there hides cancelled orders too.
+    const owed = orders.filter(o => Number(o.refundOwed ?? 0) > 0);
     if (owed.length) rows.push({
       n: owed.length, label: 'have money owed back to the customer',
-      sub: 'Cancelled or rush-declined after payment. The system cannot send it - you must.',
-      href: '/dashboard/business/orders', tone: 'bad',
+      sub: `${peso(owed.reduce((t, o) => t + Number(o.refundOwed ?? 0), 0))} in all, from orders cancelled or rush-declined after payment. The system cannot send it - you must.`,
+      href: '/dashboard/business/orders?stage=refund_owed', tone: 'bad',
     });
 
     return rows;
@@ -417,6 +421,8 @@ export default function StaffHome() {
       { n: stageCount.making, label: 'being made', href: '/dashboard/business/orders?stage=making', calm: true },
       { n: stageCount.toship, label: 'ready to ship', href: '/dashboard/business/orders?stage=toship' },
       { n: desk.balancesDue.length, label: 'with a balance due', href: '/dashboard/business/payments' },
+      // Money to send back - counted over every order, since it is cancelled ones that carry it.
+      { n: orders.filter(o => Number(o.refundOwed ?? 0) > 0).length, label: 'refunds to send', href: '/dashboard/business/orders?stage=refund_owed' },
     ];
 
     // Best sellers this month, by what they brought in. Sale rows are one per line.

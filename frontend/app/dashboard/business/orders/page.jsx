@@ -3521,6 +3521,7 @@ export default function OrdersPage() {
     const s = new URLSearchParams(window.location.search).get('stage');
     if (['todo', 'making', 'toship'].includes(s)) setStatusFilter(`stage:${s}`);
     else if (s === 'needs_attention') setStatusFilter('needs_attention');
+    else if (s === 'refund_owed') setStatusFilter('refund_owed');
   }, []);
   const [payFilter,    setPayFilter]    = useState('all');
   const [typeFilter,   setTypeFilter]   = useState('all');
@@ -3678,12 +3679,15 @@ export default function OrdersPage() {
     return matchSearch && matchPay && matchType && matchDate;
   });
 
-  const wantsDone = statusFilter === 'stage:done' || ORDER_STAGES.find(st => st.key === 'done').statuses.includes(statusFilter);
+  // Refunds to send are nearly all on cancelled orders, so that list must not hide "done" ones.
+  const wantsDone = statusFilter === 'stage:done' || statusFilter === 'refund_owed' || ORDER_STAGES.find(st => st.key === 'done').statuses.includes(statusFilter);
   const filtered = scoped.filter(o =>
     // 'needs_attention' is not a stored status - it is the derived delivery-promise risk.
     // 'stage:<key>' is a group of statuses (see ORDER_STAGES).
     (statusFilter === 'all' ? true
       : statusFilter === 'needs_attention' ? !!deliveryRisk(o)
+      // Money the shop still has to send back, whatever state the order is in.
+      : statusFilter === 'refund_owed' ? Number(o.refundOwed ?? 0) > 0
       // Open: anything not finished - not delivered, not cancelled, not returned.
       : statusFilter === 'open' ? !isDone(o.orderStatus)
       // Still owes money, whatever stage it is at.
@@ -3713,6 +3717,7 @@ export default function OrdersPage() {
     cancelled:    countBy('cancelled'),
     // Orders whose delivery promise is late or about to be missed (derived, not stored).
     needsAttention: scoped.filter(o => !!deliveryRisk(o)).length,
+    refundOwed:   scoped.filter(o => Number(o.refundOwed ?? 0) > 0).length,
   };
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
@@ -3745,6 +3750,9 @@ export default function OrdersPage() {
             { label:'Delivered',      value:counts.delivered,     id:'delivered'     },
             { label:'Cancelled',      value:counts.cancelled,     id:'cancelled'     },
             { label:'Needs Attention',value:counts.needsAttention,id:'needs_attention', alert:true },
+            // Only while there is one. A cancelled order drops out of the default list, and the
+            // refund it left behind went with it; this card is how it is found again.
+            ...(counts.refundOwed > 0 ? [{ label:'Refunds to Send', value:counts.refundOwed, id:'refund_owed', alert:true }] : []),
           ].map(c => (
             // The same floor as the card inside it. The wrapper could shrink to 100px while the card
             // held at 140px, so at laptop width every card spilled over its neighbour instead of the
@@ -3770,6 +3778,7 @@ export default function OrdersPage() {
                 { value:'open',   label:`Open - not yet delivered (${counts.open})` },
                 { value:'unpaid', label:`Open and still owes (${counts.unpaid})` },
                 { value:'needs_attention', label:`Needs attention (${counts.needsAttention})` },
+                { value:'refund_owed', label:`Refunds to send (${counts.refundOwed})` },
                 ...STATUS_TABS.filter(t => t !== 'all').map(t => ({ value:t, label:statusLabel(t) })),
               ]}
               style={{ width:'270px' }} />
@@ -3796,6 +3805,7 @@ export default function OrdersPage() {
                   { value:'unpaid', label:`Open and still owes (${counts.unpaid})` },
                   ...ORDER_STAGES.map(st => ({ value:'stage:' + st.key, label:st.label })),
                   { value:'needs_attention', label:'Needs attention' },
+                  { value:'refund_owed', label:`Refunds to send (${counts.refundOwed})` },
                   ...ORDER_STATUS_ORDER.map(st => ({ value: st, label: statusLabel(st) })),
                 ] },
               { key:'type', label:'Type', value:typeFilter, defaultValue:'all', onChange: v => { setTypeFilter(v); setPage(1); },

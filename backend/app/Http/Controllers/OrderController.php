@@ -4717,16 +4717,19 @@ class OrderController extends Controller
                 ]);
             }
 
-            // In-app notification to admin - B-13
+            // In-app notification to the shop - B-13. To every admin and the owner, not the first
+            // admin found, and with the amount: this cancellation can leave money the shop has to
+            // send back, and a bell that only said "cancelled" gave nobody a reason to open it.
             try {
-                $admin = \App\Models\User::where('role', 'admin')->first();
-                if ($admin) {
+                $owedBack = (float) ($order->refundOwed ?? 0);
+                foreach (\App\Models\User::whereIn('role', ['admin', 'owner'])->get() as $shop) {
                     Notification::create([
-                        'user_id'    => (string) $admin->_id,
+                        'user_id'    => (string) $shop->_id,
                         'type'       => 'order_cancelled',
-                        'title'      => 'Order Cancelled by Customer',
+                        'title'      => $owedBack > 0 ? 'Order Cancelled - Refund to Send' : 'Order Cancelled by Customer',
                         'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8)) .
-                                        ' was cancelled by ' . trim("{$user->firstName} {$user->lastName}") . '.',
+                                        ' was cancelled by ' . trim("{$user->firstName} {$user->lastName}") . '.'
+                                        . ($owedBack > 0 ? ' P' . number_format($owedBack, 2) . ' is owed back to them - send it, then mark it sent on the order.' : ''),
                         'is_read'    => false,
                         'data'       => ['orderId' => (string) $order->_id],
                         'created_at' => now(),

@@ -246,43 +246,53 @@ input[type="number"] {
 }
 
 /* ── Sections that open and close ──
-   The headings were labels over one long list. They are buttons now: the section the person is
-   in is open, the rest are folded to their heading, and the whole menu fits the rail without
-   scrolling. Gold marks the heading of the section the current page belongs to, so a folded
-   section still says "you are in here". */
+   The headings were labels over one long list. Each is a row of its own now - an icon, the name,
+   an arrow - and the modules inside sit indented under a guide line, so the menu reads as groups
+   with things in them rather than as 27 equal lines. The section the person is in is open, the
+   rest are folded to their row, and the whole menu fits the rail without scrolling. */
 .sidebar-sec { display: flex; flex-direction: column; }
 .sidebar-sec-head {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  min-height: 34px;
-  margin-top: 4px;
-  padding: 0 0.75rem 0 1rem;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 0.6rem 0 0.75rem;
+  margin: 1px 8px;
   background: none;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 8px;
   cursor: pointer;
-  font-family: Arial, Arimo, Helvetica, sans-serif;
-  font-size: 0.62rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--gray);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--gray-light);
   text-align: left;
   white-space: nowrap;
   transition: background 0.15s ease, color 0.15s ease;
 }
 .sidebar-sec-head > span { flex: 1; }
+.sidebar-sec-head .nav-icon { color: var(--gray); transition: color 0.2s ease; }
 .sidebar-sec-head:hover { background: rgba(212, 168, 67, 0.08); color: var(--white); }
+.sidebar-sec-head:hover .nav-icon { color: var(--gold); }
 .sidebar-sec-head:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
-.sidebar-sec-head.has-here { color: var(--gold); }
-.sidebar-sec-chevron { flex-shrink: 0; opacity: 0.7; transition: transform 0.18s ease; }
+/* The section the current page belongs to: marked, without borrowing the look of the active page. */
+.sidebar-sec-head.has-here { color: var(--white); }
+.sidebar-sec-head.has-here .nav-icon { color: var(--gold); }
+.sidebar-sec-chevron { flex-shrink: 0; color: var(--gray); transition: transform 0.18s ease; }
 .sidebar-sec-head[aria-expanded="true"] .sidebar-sec-chevron { transform: rotate(180deg); }
-.sidebar-sec-items { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 6px; }
-/* The icon-only rail keeps every module listed and has no room for a heading. */
+.sidebar-sec-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 6px 27px;
+  padding-left: 4px;
+  border-left: 1px solid var(--border);
+}
+.sidebar-sec-items .sidebar-nav-item { margin-left: 4px; font-weight: 500; }
+/* The icon-only rail keeps every module listed and has no room for a heading or an indent. */
 .admin-sidebar.collapsed .sidebar-sec-head { display: none; }
-.admin-sidebar.collapsed .sidebar-sec-items { padding: 0; }
+.admin-sidebar.collapsed .sidebar-sec-items { margin: 0; padding: 0; border-left: none; }
+.admin-sidebar.collapsed .sidebar-sec-items .sidebar-nav-item { margin-left: 8px; }
 @media (prefers-reduced-motion: reduce) { .sidebar-sec-chevron { transition: none; } }
 
 /* The nav used to hide its scrollbar, which is fine until the wheel stops working - then there is

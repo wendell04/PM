@@ -1157,7 +1157,7 @@ export default function OrdersHistoryPage() {
       `}</style>
     <div style={{ minHeight: '100vh' }}>
 
-      <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '28px 16px 48px' }}>
+      <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '28px 0 48px' }}>
 
         {/* Page header */}
         <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>

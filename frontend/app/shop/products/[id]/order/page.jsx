@@ -1042,7 +1042,7 @@ function CustomOrderInner() {
     const bar = (extra) => ({ background: 'var(--dark2)', borderRadius: 8, animation: 'pmPulse 1.4s ease-in-out infinite', ...extra });
     const card = { background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 };
     return (
-      <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
+      <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 0 4rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
         <style>{`@keyframes pmPulse { 0%,100%{opacity:1} 50%{opacity:.5} }`}</style>
         <div style={{ maxWidth: 1000, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={bar({ width: 120, height: 14 })} />
@@ -1118,7 +1118,7 @@ function CustomOrderInner() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 0 4rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
       {showTerms && (
         // The backdrop does not close it and the page behind does not scroll: this is the one
         // thing they must read. Closing with the X un-picks the mode, so picking again brings
