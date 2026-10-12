@@ -1167,7 +1167,10 @@ class OrderController extends Controller
     public function orderCostOfGoods(Request $request)
     {
         try {
-            if (!$this->hasAnyPermission($request, ['orders.view', 'payments.view'])) {
+            // What an order cost to make is a finance figure. It was open to anyone who could see
+            // orders, so a staff member with no Sales access could read every order's cost - and with
+            // the order total beside it, the margin. Only the Sales page reads this; it asks the same.
+            if (!$this->hasAnyPermission($request, ['sales.view', 'reports.view'])) {
                 return $this->forbiddenResponse();
             }
 
@@ -2865,6 +2868,9 @@ class OrderController extends Controller
             return $this->successResponse('Cancel settlement computed.', [
                 'orderRef' => strtoupper(substr((string) $order->_id, -8)),
                 'paidSoFar'=> round($this->paidSoFar($order), 2),
+                // The same figures the customer's own cancel route uses, so the screen that
+                // pre-fills the refund cannot work the deposit out differently.
+                'terms'    => $this->cancelTerms($order),
                 'items'    => $rows,
             ]);
         } catch (\Throwable $e) {
@@ -3491,6 +3497,78 @@ class OrderController extends Controller
             (float) ($order->downPayment ?? 0),
             (float) collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0))
         );
+    }
+
+    /**
+     * What the order terms say happens to the money when the CUSTOMER cancels: the shop keeps the
+     * downpayment and a paid design fee, and everything above that goes back.
+     *
+     * One place, because there were two answers. The terms ticked at checkout, the note beside the
+     * pay button, the customer's own cancel dialog ("down payments are non-refundable") and the
+     * shop's cancel screen all keep the deposit - while the customer's cancel route recorded the
+     * whole payment as owed back, so somebody who paid in full and cancelled was owed 100% on paper.
+     *
+     * The deposit is a share of what the goods cost, the same base it was charged on: the total
+     * without a design fee that was paid on its own.
+     *
+     * @return array{paid: float, designKept: float, deposit: float, depositKept: float, keep: float, refund: float}
+     */
+    private function cancelTerms($order): array
+    {
+        $paid       = round($this->paidSoFar($order), 2);
+        $designKept = ($order->designFeePaid ?? false)
+            ? (float) ($order->designFeePaidAmount ?? $order->designFee ?? 0)
+            : 0.0;
+        $designKept = round(min($paid, max(0, $designKept)), 2);
+        $goodsPaid  = round(max(0, $paid - $designKept), 2);
+        $goodsBase  = max(0, (float) ($order->totalAmount ?? 0) - $designKept);
+
+        $deposit = 0.0;
+        if (!empty($order->orderRequestId) && $goodsBase > 0) {
+            // A quotation order. Its deposit is the one the shop put on the quote (half when none
+            // was set), whether or not the customer then chose to pay in full: on these orders
+            // `requiresDownpayment` only says a balance is still open, so a quote paid in full
+            // would otherwise read as having no deposit at all and be refunded whole.
+            $quote = \App\Models\OrderRequest::find((string) $order->orderRequestId);
+            if ($quote) {
+                $rush    = round((float) ($quote->rushFee ?? 0), 2);
+                $deposit = ($quote->downPayment !== null && (float) $quote->downPayment > 0)
+                    ? (float) $quote->downPayment + $rush
+                    : (float) ($quote->finalPrice ?? 0) * 0.5 + $rush;
+            } elseif (($pct = (int) ($order->downpaymentPercent ?? 0)) > 0) {
+                $deposit = $goodsBase * min($pct, 100) / 100;
+            }
+        } elseif (($order->requiresDownpayment ?? false) && $goodsBase > 0) {
+            $pct = (int) ($order->downpaymentPercent ?? 0);
+            if ($pct > 0) {
+                $deposit = $goodsBase * min($pct, 100) / 100;
+            } else {
+                // Lines that disagree on the rate: each line's share at its own rate. A product
+                // flagged for a deposit with no percent set means half, as at checkout.
+                $sum = 0.0; $dep = 0.0;
+                foreach ((array) ($order->items ?? []) as $i) {
+                    $line = (float) ($i['lineTotal'] ?? ((float) ($i['unitPrice'] ?? 0) * (int) ($i['qty'] ?? 0)));
+                    if ($line <= 0) continue;
+                    $p   = Product::find($i['productId'] ?? null);
+                    $lp  = (int) ($p->downpaymentPercent ?? 0);
+                    $req = (bool) ($p->requiresDownpayment ?? false) || $lp > 0;
+                    $sum += $line;
+                    $dep += $req ? $line * min($lp > 0 ? $lp : 50, 100) / 100 : 0;
+                }
+                $deposit = $sum > 0 ? $goodsBase * ($dep / $sum) : $goodsBase * 0.5;
+            }
+        }
+        $deposit     = round($deposit, 2);
+        $depositKept = round(min($goodsPaid, $deposit), 2);
+
+        return [
+            'paid'        => $paid,
+            'designKept'  => $designKept,
+            'deposit'     => $deposit,
+            'depositKept' => $depositKept,
+            'keep'        => round($depositKept + $designKept, 2),
+            'refund'      => round(max(0, $goodsPaid - $depositKept), 2),
+        ];
     }
 
     /**
@@ -4577,18 +4655,18 @@ class OrderController extends Controller
             // The gate above lets a PAID order be cancelled - correctly, since nothing has been
             // made yet - but the money was never mentioned anywhere: the order flipped to Cancelled,
             // the stock came back, and the customer got an email quoting the total as though it were
-            // a receipt. A design fee is deliberately excluded because the design work was done and
-            // the terms say it is non-refundable; only the goods side is unwound.
-            $paid        = $this->paidSoFar($order);
-            $designKept  = ($order->designFeePaid ?? false)
-                ? (float) ($order->designFeePaidAmount ?? $order->designFee ?? 0)
-                : 0.0;
+            // a receipt. What goes back is what the terms they accepted say: everything above the
+            // downpayment, and never a design fee, because that work was done.
+            $terms = $this->cancelTerms($order);
+            $kept  = array_filter([
+                $terms['depositKept'] > 0 ? 'downpayment of P' . number_format($terms['depositKept'], 2) : null,
+                $terms['designKept']  > 0 ? 'design fee of P' . number_format($terms['designKept'], 2) : null,
+            ]);
             $this->recordRefundOwed(
                 $order,
-                $paid - $designKept,
-                $designKept > 0
-                    ? 'Order cancelled by the customer - goods payment returned, design fee retained'
-                    : 'Order cancelled by the customer before production',
+                $terms['refund'],
+                'Order cancelled by the customer before production'
+                    . ($kept ? ' - ' . implode(' and ', $kept) . ' kept under the order terms' : ''),
                 'customer cancellation'
             );
             // The customer can only cancel before production, so nothing has gone out.
@@ -4623,9 +4701,12 @@ class OrderController extends Controller
                     'user_id'    => (string) $order->userId,
                     'type'       => 'order_cancelled',
                     'title'      => 'Order Cancelled',
+                    // Said once, where the cancellation is announced: what comes back and what does not.
                     'message'    => 'Your order #' .
                         strtoupper(substr((string) $order->_id, -8)) .
-                        ' has been cancelled.',
+                        ' has been cancelled.'
+                        . ($terms['refund'] > 0 ? ' A refund of P' . number_format($terms['refund'], 2) . ' is being arranged.' : '')
+                        . ($kept ? ' Under the order terms, the ' . implode(' and ', $kept) . ' is not refunded.' : ''),
                     'is_read'    => false,
                     'data'       => ['orderId' => (string) $order->_id],
                     'created_at' => now(),

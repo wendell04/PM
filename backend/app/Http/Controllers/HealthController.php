@@ -31,13 +31,20 @@ class HealthController extends Controller
         $checks['storage'] = ['status' => $storageOk ? 'ok' : 'error'];
         if (!$storageOk) $allOk = false;
 
-        // Queue - check that the jobs table/collection is reachable
-        try {
-            $pending = DB::connection('mongodb')->collection('jobs')->count();
-            $checks['queue'] = ['status' => 'ok', 'pending_jobs' => $pending];
-        } catch (Throwable $e) {
-            $checks['queue'] = ['status' => 'error', 'message' => 'Cannot read jobs collection'];
-            // Queue failure is degraded but not fatal
+        // Queue. This reported "error: Cannot read jobs collection" on a healthy server for two
+        // reasons: the driver's collection() was renamed table(), so the call always threw, and the
+        // app runs jobs in the request (sync), where there is no jobs collection to read at all.
+        $queueDriver = (string) config('queue.default');
+        if ($queueDriver === 'sync') {
+            $checks['queue'] = ['status' => 'ok', 'driver' => 'sync'];
+        } else {
+            try {
+                $pending = DB::connection('mongodb')->table('jobs')->count();
+                $checks['queue'] = ['status' => 'ok', 'driver' => $queueDriver, 'pending_jobs' => $pending];
+            } catch (Throwable $e) {
+                $checks['queue'] = ['status' => 'error', 'driver' => $queueDriver, 'message' => 'Cannot read jobs collection'];
+                // Queue failure is degraded but not fatal
+            }
         }
 
         // Cache - write + read a test key

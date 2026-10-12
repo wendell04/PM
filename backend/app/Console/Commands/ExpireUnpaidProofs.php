@@ -6,7 +6,6 @@ use App\Models\Order;
 use App\Support\PromotionRelease;
 use App\Models\User;
 use App\Models\Notification;
-use App\Models\RawMaterial;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -107,25 +106,14 @@ class ExpireUnpaidProofs extends Command
             if ($dry) { continue; }
 
             try {
-                // Give back only what was actually held. A line that never reserved anything - because
-                // the material is on-demand, or the record has since gone - is skipped rather than
-                // guessed at; inventing stock is worse than leaving it short.
-                foreach (($order->items ?? []) as $item) {
-                    foreach (($item['materials'] ?? []) as $mat) {
-                        $raw = RawMaterial::find($mat['materialId'] ?? null);
-                        if (!$raw || ($raw->isOnDemand ?? false)) continue;
-                        $qty = (int) ($mat['qty'] ?? 0);
-                        if ($qty <= 0) continue;
-                        $raw->reservedQty = max(0, (int) ($raw->reservedQty ?? 0) - $qty);
-                        $raw->save();
-                        $released++;
-                    }
-                }
-
                 // What checkout actually claimed - BOM holds, ready-made deductions, owed quantities,
-                // quote holds. The loop above only understands a legacy shape, so on its own it
-                // released nothing for an order placed today.
+                // quote holds. A loop used to run first that released a legacy shape through a
+                // RawMaterial model that no longer exists. Any order whose lines carry a materials
+                // list - every quotation order - hit "class not found" there, was logged as failed,
+                // and came back to fail again the next night: it never expired and its stock stayed
+                // held for good.
                 app(\App\Http\Controllers\OrderController::class)->releaseReservationsFor($order);
+                $released++;
 
                 $history   = $order->statusHistory ?? [];
                 $history[] = ['status' => 'cancelled', 'at' => now()->toISOString(), 'note' => 'Deposit not paid before the hold expired.'];
@@ -163,7 +151,7 @@ class ExpireUnpaidProofs extends Command
         }
 
         $this->info(($dry ? 'Would expire ' : 'Expired ') . $due->count() . ' order(s)'
-            . ($dry ? '' : ", released {$released} material reservation(s)"));
+            . ($dry ? '' : ", released the stock held by {$released}"));
         return self::SUCCESS;
     }
 

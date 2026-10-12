@@ -207,6 +207,19 @@ abstract class Controller
     }
 
     /**
+     * The same refusal under the name three callers already use. It did not exist, and an undefined
+     * method is an Error, not an Exception, so those three guards never refused anyone: a person
+     * without the permission got a 500 instead of a 403.
+     *
+     * @param string $message
+     * @return \Illuminate\Http\JsonResponse
+     */
+    protected function forbiddenResponse($message = 'Forbidden')
+    {
+        return $this->unauthorizedResponse($message);
+    }
+
+    /**
      * Standardized not found response format.
      *
      * @param string $resource
