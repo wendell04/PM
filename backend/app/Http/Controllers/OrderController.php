@@ -4706,7 +4706,7 @@ class OrderController extends Controller
                         strtoupper(substr((string) $order->_id, -8)) .
                         ' has been cancelled.'
                         . ($terms['refund'] > 0 ? ' A refund of P' . number_format($terms['refund'], 2) . ' is being arranged.' : '')
-                        . ($kept ? ' Under the order terms, the ' . implode(' and ', $kept) . ' is not refunded.' : ''),
+                        . ($kept ? ' Under the order terms, the ' . implode(' and ', $kept) . (count($kept) > 1 ? ' are' : ' is') . ' not refunded.' : ''),
                     'is_read'    => false,
                     'data'       => ['orderId' => (string) $order->_id],
                     'created_at' => now(),

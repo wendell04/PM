@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -30,7 +30,14 @@ export default function PaymentSuccessPage() {
   // new one was never recorded.
   const intentId      = searchParams.get('payment_intent_id');
 
+  // The checkout this payment came from. It is taken out of sessionStorage below so a paid checkout
+  // cannot be opened and placed a second time, and held here so a payment that is cancelled or
+  // fails can hand it back - without it the customer landed on "No items found for checkout".
+  const checkoutPayloadRef = useRef(null);
+
   useEffect(() => {
+    const kept = sessionStorage.getItem('checkout_payload');
+    if (kept) checkoutPayloadRef.current = kept;
     sessionStorage.removeItem('checkout_payload');
     sessionStorage.removeItem('pending_payment_order_id');
     // Cart is cleared only once the order is confirmed settled (see fetchOrder), not on mount -
@@ -179,6 +186,7 @@ export default function PaymentSuccessPage() {
             }
             sessionStorage.removeItem('checkout_return_to');
             sessionStorage.removeItem('pending_payment_order_id');
+            if (checkoutPayloadRef.current) sessionStorage.setItem('checkout_payload', checkoutPayloadRef.current);
             router.replace(returnTo + (returnTo.includes('?') ? '&' : '?') + 'payment_cancelled=1');
             return;
           }
