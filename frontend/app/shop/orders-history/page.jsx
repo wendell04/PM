@@ -1601,8 +1601,10 @@ export default function OrdersHistoryPage() {
                           (selectedOrder.paymentMethod && !(selectedOrder.paymentStatus === 'unpaid' && selectedOrder.orderStatus === 'awaiting_payment'))
                             ? ['Method', { cod: 'Cash on Delivery', gcash: 'GCash', paymaya: 'Maya', card: 'Credit / Debit Card' }[selectedOrder.paymentMethod] ?? selectedOrder.paymentMethod]
                             : null,
+                          // "Order Unpaid" was shown on every order short of paid in full, so an order with its
+                          // downpayment in also read as unpaid.
                           (selectedOrder.designFeePaid && selectedOrder.paymentStatus !== 'paid')
-                            ? ['Payment', <span key="p" style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 600 }}>Design Fee Paid · Order Unpaid</span>]
+                            ? ['Payment', <span key="p" style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 600 }}>{selectedOrder.paymentStatus === 'partial' ? 'Design Fee Paid · Partly Paid' : 'Design Fee Paid · Order Unpaid'}</span>]
                             : null,
                           selectedOrder.designStatus
                             ? ['Design', <span key="d" style={{ padding: '2px 8px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 600, background: selectedOrder.designStatus === 'approved' ? '#d4a843' : selectedOrder.designStatus === 'rejected' ? 'rgba(239,68,68,0.1)' : 'rgba(234,179,8,0.1)', color: selectedOrder.designStatus === 'approved' ? '#000000' : selectedOrder.designStatus === 'rejected' ? '#ef4444' : '#d4a843' }}>
